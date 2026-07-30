@@ -96,6 +96,7 @@
     <nav id="nav">
       <button data-view="charts" class="active">Графики</button>
       <button data-view="dash">Каналы</button>
+      <button data-view="outreach">Рассылки</button>
       <button data-view="leads">Лиды</button>
       <button data-view="clients">Клиенты</button>
       <button data-view="partners">Партнёры</button>
@@ -122,8 +123,9 @@
           <thead><tr>
             <th>Канал</th>
             <th class="num">Написал</th>
+            <th class="num">Ответило</th>
+            <th>Конв. в ответ</th>
             <th class="num">Согласилось</th>
-            <th>Конв. в согласие</th>
             <th class="num">Стали клиентом</th>
             <th>Конв. в клиента</th>
           </tr></thead>
@@ -141,6 +143,26 @@
             <th class="num">Сотрудничают</th>
             <th class="num">Не сотрудничают</th>
             <th>Конв. партнёров</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUTREACH (рассылки) -->
+  <section class="view" id="view-outreach">
+    <div class="cards" id="outreachCards"></div>
+    <div class="toolbar">
+      <button class="btn primary" onclick="openOutreach()">+ Рассылка</button>
+      <select id="outreachChanFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
+      <span class="hint" style="align-self:center">Заноси сюда холодные рассылки пачками. Поимённо в «Лиды» — только тех, кто ответил.</span>
+    </div>
+    <div class="panel">
+      <div class="tablewrap">
+        <table id="outreachTable">
+          <thead><tr>
+            <th>Дата</th><th>Площадка</th><th class="num">Отправлено</th><th class="num">Ответило</th><th>Отклик</th><th>Комментарий</th><th></th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -216,7 +238,7 @@
       <div class="chartbox"><h3>Воронка лидов</h3><div id="chartFunnel"></div></div>
       <div class="chartbox"><h3>Лиды по каналам</h3><div id="chartChanLeads"></div></div>
       <div class="chartbox"><h3>Динамика по месяцам</h3><div id="chartMonthly"></div>
-        <div class="legend"><span><i style="background:#3b5bdb"></i>Новые лиды</span><span><i style="background:#2f9e44"></i>Стали клиентом</span><span><i style="background:#e8590c"></i>Стартовало клиентов</span></div>
+        <div class="legend"><span><i style="background:#3b5bdb"></i>Отправлено</span><span><i style="background:#2f9e44"></i>Стали клиентом</span><span><i style="background:#e8590c"></i>Стартовало клиентов</span></div>
       </div>
       <div class="chartbox"><h3>Клиенты по статусам</h3><div id="chartClientStatus"></div></div>
     </div>
@@ -309,7 +331,7 @@ const DEFAULT_CHANNELS = ["Авито","Профи.ру","Личные конт�
 let db = null, ghSha = null, dirty = false;
 
 function blankDB(){
-  return { channels:[...DEFAULT_CHANNELS], leads:[], clients:[], partners:[], updatedAt:null };
+  return { channels:[...DEFAULT_CHANNELS], outreach:[], leads:[], clients:[], partners:[], updatedAt:null };
 }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function today(){ const d=new Date(); return d.toISOString().slice(0,10); }
@@ -324,6 +346,7 @@ function loadLocal(){
   try{ const raw=localStorage.getItem(LS_DATA); db = raw?JSON.parse(raw):blankDB(); }
   catch(e){ db=blankDB(); }
   if(!db.channels||!db.channels.length) db.channels=[...DEFAULT_CHANNELS];
+  ['outreach','leads','clients','partners'].forEach(k=>{ if(!Array.isArray(db[k])) db[k]=[]; });
   ghSha = localStorage.getItem(LS_SHA)||null;
 }
 function saveLocal(mark=true){
@@ -425,6 +448,7 @@ function ghSetStatus(t,cls){ const el=document.getElementById('ghStatus'); el.te
 function normalize(parsed){
   const d=blankDB();
   if(Array.isArray(parsed.channels)&&parsed.channels.length) d.channels=parsed.channels;
+  d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,replied:+x.replied||0,comment:x.comment||''}));
   d.leads=(parsed.leads||[]).map(x=>({id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'Написал',partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}));
   d.clients=(parsed.clients||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'В работе',partner:x.partner||'',comment:x.comment||''}));
   d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Отказался'?'Не сотрудничаем':(x.status||'Надо написать')),comment:x.comment||''}));
@@ -434,15 +458,17 @@ function normalize(parsed){
 
 /* ============================= ВЫЧИСЛЕНИЯ ============================= */
 function channelStats(ch){
+  const out=db.outreach.filter(o=>o.channel===ch);
+  const sent=out.reduce((s,o)=>s+(+o.sent||0),0);
+  const replied=out.reduce((s,o)=>s+(+o.replied||0),0);
   const leads=db.leads.filter(l=>l.channel===ch);
-  const written=leads.length;
   const agreed=leads.filter(l=>AGREED_SET.has(l.status)).length;
   const becameClient=leads.filter(l=>l.status==='Стал клиентом').length;
   const partners=db.partners.filter(p=>p.source===ch);
   const partnersWritten=partners.length;
   const partnersCooperating=partners.filter(p=>p.status==='Сотрудничаем').length;
   const partnersDeclined=partners.filter(p=>p.status==='Не сотрудничаем').length;
-  return {written,agreed,agreedConv:written?agreed/written:0,becameClient,clientConv:written?becameClient/written:0,
+  return {sent,replied,replyConv:sent?replied/sent:0,agreed,becameClient,clientConv:sent?becameClient/sent:0,
     partnersWritten,partnersCooperating,partnersDeclined,partnerConv:partnersWritten?partnersCooperating/partnersWritten:0};
 }
 function partnerComputed(p){
@@ -461,20 +487,22 @@ function renderSync(state){
   else { txt.textContent='локально (не в GitHub)'; }
 }
 function renderAll(){
-  renderDash(); renderLeads(); renderClients(); renderPartners(); renderCharts();
+  renderDash(); renderOutreach(); renderLeads(); renderClients(); renderPartners(); renderCharts();
   renderChannelChips(); refreshChannelSelects(); updateLocalInfo(); renderSync();
 }
 
 /* ---- Dashboard ---- */
 function renderDash(){
-  const totalWritten=db.leads.length;
+  const totalSent=db.outreach.reduce((s,o)=>s+(+o.sent||0),0);
+  const totalReplied=db.outreach.reduce((s,o)=>s+(+o.replied||0),0);
+  const became=db.leads.filter(l=>l.status==='Стал клиентом').length;
   const totalClients=db.clients.length;
   const activeClients=db.clients.filter(c=>c.status==='В работе'||c.status==='Пауза').length;
   const cooperating=db.partners.filter(p=>p.status==='Сотрудничаем').length;
-  const conv=totalWritten?db.leads.filter(l=>l.status==='Стал клиентом').length/totalWritten:0;
+  const conv=totalSent?became/totalSent:0;
   document.getElementById('dashCards').innerHTML=[
-    card('Написано лидов',totalWritten),
-    card('Стали клиентом',db.leads.filter(l=>l.status==='Стал клиентом').length,'общая конв. '+pct(conv)),
+    card('Отправлено',totalSent, totalSent?('ответило '+totalReplied+' · '+pct(totalReplied/totalSent)):''),
+    card('Стали клиентом',became,'общая конв. '+pct(conv)),
     card('Клиентов всего',totalClients,'активных '+activeClients),
     card('Партнёров сотрудничает',cooperating,'из '+db.partners.length),
   ].join('');
@@ -482,12 +510,13 @@ function renderDash(){
   document.querySelector('#chanLeadTable tbody').innerHTML = rows.map(({ch,s})=>`
     <tr>
       <td><b>${esc(ch)}</b></td>
-      <td class="num">${s.written}</td>
+      <td class="num">${s.sent}</td>
+      <td class="num">${s.replied}</td>
+      <td>${convBar(s.replyConv)}</td>
       <td class="num">${s.agreed}</td>
-      <td>${convBar(s.agreedConv)}</td>
       <td class="num">${s.becameClient}</td>
       <td>${convBar(s.clientConv)}</td>
-    </tr>`).join('') || `<tr><td colspan="6" class="empty">Нет каналов</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="7" class="empty">Нет каналов</td></tr>`;
   document.querySelector('#chanPartnerTable tbody').innerHTML = rows.map(({ch,s})=>`
     <tr>
       <td><b>${esc(ch)}</b></td>
@@ -499,6 +528,31 @@ function renderDash(){
 }
 function card(k,v,sub){ return `<div class="card"><div class="k">${esc(k)}</div><div class="v">${v}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>`; }
 function convBar(x){ return `<div class="bararea"><div class="mini"><i style="width:${Math.round(x*100)}%"></i></div><span class="muted">${pct(x)}</span></div>`; }
+
+/* ---- Outreach (рассылки) ---- */
+function renderOutreach(){
+  const sent=db.outreach.reduce((s,o)=>s+(+o.sent||0),0);
+  const replied=db.outreach.reduce((s,o)=>s+(+o.replied||0),0);
+  document.getElementById('outreachCards').innerHTML=[
+    card('Отправлено всего',sent),
+    card('Ответило',replied, sent?('отклик '+pct(replied/sent)):''),
+    card('Записей рассылок',db.outreach.length),
+  ].join('');
+  const cf=document.getElementById('outreachChanFilter').value;
+  const rows=db.outreach.filter(o=>!cf||o.channel===cf).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  document.querySelector('#outreachTable tbody').innerHTML = rows.map(o=>{
+    const rate=(+o.sent)?(+o.replied/+o.sent):0;
+    return `<tr style="cursor:pointer" onclick="openOutreach('${o.id}')">
+      <td>${esc(o.date||'—')}</td>
+      <td><b>${esc(o.channel||'—')}</b></td>
+      <td class="num">${o.sent}</td>
+      <td class="num">${o.replied}</td>
+      <td>${convBar(rate)}</td>
+      <td class="muted">${esc((o.comment||'').slice(0,50))}</td>
+      <td></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="7" class="empty">Рассылок пока нет. Нажми «+ Рассылка».</td></tr>`;
+}
 
 /* ---- Leads ---- */
 function renderLeads(){
@@ -661,6 +715,18 @@ function openPartner(id){
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(p.comment)}</textarea>`,true);
   showModal(!!id);
 }
+function openOutreach(id){
+  editKind='outreach'; editId=id||null;
+  const o = id ? db.outreach.find(x=>x.id===id) : {date:today(),channel:db.channels[0]||'',sent:'',replied:'',comment:''};
+  document.getElementById('mTitle').textContent = id?'Рассылка':'Новая рассылка';
+  document.getElementById('mBody').innerHTML =
+    field('Дата',`<input type="date" id="f_date" value="${esc(o.date)}">`)+
+    field('Площадка',`<select id="f_channel">${chanOptions(o.channel)}</select>`)+
+    field('Отправлено',`<input type="number" min="0" id="f_sent" value="${esc(o.sent)}">`)+
+    field('Ответило',`<input type="number" min="0" id="f_replied" value="${esc(o.replied)}">`)+
+    field('Комментарий',`<textarea id="f_comment" rows="2">${esc(o.comment)}</textarea>`,true);
+  showModal(!!id);
+}
 function showModal(canDelete){ document.getElementById('mDelete').style.visibility=canDelete?'visible':'hidden'; document.getElementById('modalBg').classList.add('open'); }
 function closeModal(){ document.getElementById('modalBg').classList.remove('open'); editKind=null; editId=null; }
 function val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
@@ -692,6 +758,9 @@ function saveModal(){
     const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),niche:val('f_niche'),status:val('f_status'),comment:val('f_comment')};
     applyAutoEnd(rec,PARTNER_TERMINAL);
     upsert(db.partners,rec);
+  } else if(editKind==='outreach'){
+    const rec={id:editId||uid(),date:val('f_date'),channel:val('f_channel'),sent:Math.max(0,parseInt(val('f_sent'),10)||0),replied:Math.max(0,parseInt(val('f_replied'),10)||0),comment:val('f_comment')};
+    upsert(db.outreach,rec);
   }
   saveLocal(); renderAll(); closeModal();
 }
@@ -701,6 +770,7 @@ function deleteCurrent(){
   if(editKind==='lead') db.leads=db.leads.filter(x=>x.id!==editId);
   if(editKind==='client') db.clients=db.clients.filter(x=>x.id!==editId);
   if(editKind==='partner') db.partners=db.partners.filter(x=>x.id!==editId);
+  if(editKind==='outreach') db.outreach=db.outreach.filter(x=>x.id!==editId);
   saveLocal(); renderAll(); closeModal();
 }
 /* ============================= КАНАЛЫ ============================= */
@@ -715,6 +785,7 @@ function renameChannel(i){
   if(db.channels.includes(nv)){ toast('Такой канал уже есть'); return; }
   db.channels[i]=nv;
   // обновляем ссылки во всех записях
+  db.outreach.forEach(o=>{ if(o.channel===old) o.channel=nv; });
   db.leads.forEach(l=>{ if(l.channel===old) l.channel=nv; });
   db.clients.forEach(c=>{ if(c.source===old) c.source=nv; });
   db.partners.forEach(p=>{ if(p.source===old) p.source=nv; });
@@ -727,11 +798,12 @@ function addChannel(){
 }
 function removeChannel(i){
   const ch=db.channels[i];
-  const used = db.leads.some(l=>l.channel===ch)||db.clients.some(c=>c.source===ch)||db.partners.some(p=>p.source===ch);
+  const used = db.outreach.some(o=>o.channel===ch)||db.leads.some(l=>l.channel===ch)||db.clients.some(c=>c.source===ch)||db.partners.some(p=>p.source===ch);
   if(used && !confirm(`Канал «${ch}» используется в записях. Всё равно удалить из справочника? Записи не изменятся.`)) return;
   db.channels.splice(i,1); saveLocal(); renderChannelChips(); refreshChannelSelects(); renderDash();
 }
 function refreshChannelSelects(){
+  fillSelect('outreachChanFilter','Все каналы');
   fillSelect('leadChanFilter','Все каналы');
   fillSelect('clientSourceFilter','Все каналы');
 }
@@ -742,12 +814,13 @@ function fillSelect(id,allLabel){
 
 /* ============================= ГРАФИКИ (SVG) ============================= */
 function renderCharts(){
-  // Воронка
-  const written=db.leads.length;
+  // Воронка: Написал/Ответило — из рассылок, Согласился/Клиент — из карточек лидов
+  const sent=db.outreach.reduce((s,o)=>s+(+o.sent||0),0);
+  const replied=db.outreach.reduce((s,o)=>s+(+o.replied||0),0);
   const agreed=db.leads.filter(l=>AGREED_SET.has(l.status)).length;
   const became=db.leads.filter(l=>l.status==='Стал клиентом').length;
   document.getElementById('chartFunnel').innerHTML = funnelSVG([
-    ['Написал',written,'#3b5bdb'],['Согласился',agreed,'#4c6ef5'],['Стал клиентом',became,'#2f9e44']
+    ['Написал',sent,'#3b5bdb'],['Ответило',replied,'#4c6ef5'],['Согласился',agreed,'#748ffc'],['Стал клиентом',became,'#2f9e44']
   ]);
   // Лиды по каналам
   const chLeads=db.channels.map(ch=>[ch,db.leads.filter(l=>l.channel===ch).length]).filter(x=>x[1]>0);
@@ -808,13 +881,14 @@ function donutSVG(rows,colors){
   return svg+'</svg>';
 }
 function monthlySVG(){
-  const map={}; // ym -> {leads, became, clients}
-  const add=(ym,k)=>{ if(!ym) return; (map[ym]=map[ym]||{leads:0,became:0,clients:0})[k]++; };
-  db.leads.forEach(l=>{ const ym=(l.dateContacted||'').slice(0,7); if(ym){ add(ym,'leads'); if(l.status==='Стал клиентом') add(ym,'became'); } });
-  db.clients.forEach(c=>{ const ym=(c.startDate||'').slice(0,7); if(ym) add(ym,'clients'); });
+  const map={}; // ym -> {sent, became, clients}
+  const bump=(ym,k,n)=>{ if(!ym||!n) return; (map[ym]=map[ym]||{sent:0,became:0,clients:0})[k]+=n; };
+  db.outreach.forEach(o=>{ bump((o.date||'').slice(0,7),'sent',+o.sent||0); });
+  db.leads.forEach(l=>{ if(l.status==='Стал клиентом') bump((l.dateContacted||'').slice(0,7),'became',1); });
+  db.clients.forEach(c=>{ bump((c.startDate||'').slice(0,7),'clients',1); });
   const keys=Object.keys(map).sort();
   if(!keys.length) return emptyChart();
-  const W=500,H=300,pad=36; const max=Math.max(1,...keys.map(k=>Math.max(map[k].leads,map[k].became,map[k].clients)));
+  const W=500,H=300,pad=36; const max=Math.max(1,...keys.map(k=>Math.max(map[k].sent,map[k].became,map[k].clients)));
   const xw=(W-pad*2)/Math.max(1,keys.length-1||1);
   const xat=i=>keys.length===1?W/2:pad+i*xw;
   const yat=v=>H-pad-(v/max)*(H-pad*2);
@@ -823,7 +897,7 @@ function monthlySVG(){
   // grid + y labels
   for(let g=0;g<=4;g++){ const yy=pad+(H-pad*2)*g/4, v=Math.round(max*(1-g/4)); svg+=`<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="#eef1f8"/><text x="4" y="${yy+4}" font-size="10" fill="#aaa">${v}</text>`; }
   keys.forEach((k,i)=>{ svg+=`<text x="${xat(i)}" y="${H-10}" font-size="10" fill="#888" text-anchor="middle">${k}</text>`; });
-  svg+=line('leads','#3b5bdb')+line('became','#2f9e44')+line('clients','#e8590c');
+  svg+=line('sent','#3b5bdb')+line('became','#2f9e44')+line('clients','#e8590c');
   return svg+'</svg>';
 }
 
@@ -836,6 +910,7 @@ document.getElementById('nav').addEventListener('click',e=>{
   document.getElementById('view-'+b.dataset.view).classList.add('active');
   if(b.dataset.view==='charts') renderCharts();
 });
+document.getElementById('outreachChanFilter').addEventListener('input',renderOutreach);
 ['leadSearch','leadStatusFilter','leadChanFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderLeads));
 ['clientSearch','clientStatusFilter','clientSourceFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderClients));
 ['partnerSearch','partnerStatusFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderPartners));
@@ -877,7 +952,7 @@ renderAll();
 // автозагрузка из GitHub при старте, если настроено и локально пусто
 window.addEventListener('load',()=>{
   const c=ghCfg();
-  const empty=!db.leads.length&&!db.clients.length&&!db.partners.length;
+  const empty=!db.outreach.length&&!db.leads.length&&!db.clients.length&&!db.partners.length;
   if(c.owner&&c.repo&&c.token&&empty){ ghLoad(); }
 });
 </script>
