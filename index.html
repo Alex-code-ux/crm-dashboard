@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM — Клиенты и каналы</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --panel:#ffffff; --ink:#1f2430; --muted:#6b7280; --line:#e5e8f0;
+    --accent:#3b5bdb; --accent-soft:#e7ecff; --ok:#2f9e44; --warn:#e8590c; --danger:#e03131;
+    --st-work:#FFF2CC; --st-pause:#D9E2F3; --st-done:#D9EAD3; --st-cancel:#F4CCCC;
+    --shadow:0 1px 2px rgba(20,30,60,.06),0 4px 16px rgba(20,30,60,.06);
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .bar{display:flex;align-items:center;gap:14px;padding:10px 18px;max-width:1400px;margin:0 auto}
+  .logo{font-weight:700;font-size:16px;letter-spacing:.2px}
+  .logo b{color:var(--accent)}
+  nav{display:flex;gap:4px;flex-wrap:wrap}
+  nav button{border:0;background:transparent;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+  nav button.active{background:var(--accent-soft);color:var(--accent)}
+  nav button:hover{color:var(--ink)}
+  .spacer{flex:1}
+  .sync{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .dot{width:9px;height:9px;border-radius:50%;background:#c2c8d4}
+  .dot.dirty{background:var(--warn)} .dot.ok{background:var(--ok)} .dot.err{background:var(--danger)}
+  .btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px}
+  .btn:hover{border-color:#c9d0e0}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.primary:hover{background:#33489f}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:4px 8px;font-size:12px}
+  .btn.danger{color:var(--danger);border-color:#f3c4c4}
+  main{max-width:1400px;margin:0 auto;padding:18px}
+  .view{display:none} .view.active{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  h2.section{font-size:15px;margin:2px 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .toolbar input[type=search]{flex:1;min-width:180px;max-width:340px}
+  input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+  .card .k{font-size:12px;color:var(--muted);font-weight:600}
+  .card .v{font-size:26px;font-weight:700;margin-top:4px}
+  .card .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px}
+  .panel .head{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:700;display:flex;align-items:center;gap:10px}
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+  th{background:#fafbff;color:var(--muted);font-weight:700;font-size:12px}
+  tbody tr:hover{background:#fbfcff}
+  th.num,td.num{text-align:center;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid transparent}
+  .rowact{display:flex;gap:6px}
+  .muted{color:var(--muted)}
+  .tg a{color:var(--accent);text-decoration:none} .tg a:hover{text-decoration:underline}
+  .bararea{display:flex;align-items:center;gap:8px}
+  .mini{height:8px;border-radius:99px;background:#eef1f8;flex:1;min-width:60px;overflow:hidden}
+  .mini > i{display:block;height:100%;background:var(--accent)}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(20,26,44,.42);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel);border-radius:14px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(20,30,60,.28)}
+  .modal .m-head{padding:16px 18px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+  .modal .m-body{padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal .m-body .full{grid-column:1/-1}
+  .modal .m-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+  label.f{display:block} label.f > span{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px}
+  .x{border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:900px){.charts{grid-template-columns:1fr}.modal .m-body{grid-template-columns:1fr}}
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+  .chartbox h3{margin:0 0 10px;font-size:14px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:720px}
+  .settings-grid .full{grid-column:1/-1}
+  code.k{background:#f0f2f8;padding:1px 6px;border-radius:5px;font-size:12px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1f2430;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.2s;z-index:99}
+  .toast.show{opacity:1}
+  .tagline{display:flex;gap:6px;flex-wrap:wrap}
+  .chan-chip{display:inline-flex;align-items:center;gap:6px;background:#f0f2f8;border-radius:8px;padding:4px 8px;font-size:13px}
+  .chan-chip button{border:0;background:transparent;color:var(--danger);cursor:pointer;font-size:14px;line-height:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="logo">CRM <b>·</b> Клиенты и каналы</div>
+    <nav id="nav">
+      <button data-view="charts" class="active">Графики</button>
+      <button data-view="dash">Каналы</button>
+      <button data-view="leads">Лиды</button>
+      <button data-view="clients">Клиенты</button>
+      <button data-view="partners">Партнёры</button>
+      <button data-view="settings">Настройки</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="sync">
+      <span class="dot" id="syncDot"></span>
+      <span id="syncText">не синхронизировано</span>
+    </div>
+    <button class="btn" id="btnLoad">Загрузить</button>
+    <button class="btn primary" id="btnSave">Сохранить в GitHub</button>
+  </div>
+</header>
+
+<main>
+  <!-- DASHBOARD: CHANNELS -->
+  <section class="view" id="view-dash">
+    <div class="cards" id="dashCards"></div>
+    <div class="panel">
+      <div class="head">Каналы — лиды и клиенты</div>
+      <div class="tablewrap">
+        <table id="chanLeadTable">
+          <thead><tr>
+            <th>Канал</th>
+            <th class="num">Написал</th>
+            <th class="num">Согласилось</th>
+            <th>Конв. в согласие</th>
+            <th class="num">Стали клиентом</th>
+            <th>Конв. в клиента</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="head">Каналы — партнёры</div>
+      <div class="tablewrap">
+        <table id="chanPartnerTable">
+          <thead><tr>
+            <th>Канал</th>
+            <th class="num">Партнёров</th>
+            <th class="num">Сотрудничают</th>
+            <th class="num">Не сотрудничают</th>
+            <th>Конв. партнёров</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- LEADS -->
+  <section class="view" id="view-leads">
+    <div class="toolbar">
+      <button class="btn primary" onclick="openLead()">+ Лид</button>
+      <input type="search" id="leadSearch" placeholder="Поиск по имени / телеграму / комментарию…">
+      <select id="leadStatusFilter" style="width:auto;min-width:180px"><option value="">Все статусы</option></select>
+      <select id="leadChanFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
+    </div>
+    <div class="panel">
+      <div class="tablewrap">
+        <table id="leadTable">
+          <thead><tr>
+            <th>Дата</th><th>Канал</th><th>Имя</th><th>Telegram</th><th>Статус</th><th>Партнёр</th><th>Комментарий</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLIENTS -->
+  <section class="view" id="view-clients">
+    <div class="cards" id="clientCards"></div>
+    <div class="toolbar">
+      <button class="btn primary" onclick="openClient()">+ Клиент</button>
+      <input type="search" id="clientSearch" placeholder="Поиск…">
+      <select id="clientStatusFilter" style="width:auto;min-width:170px"><option value="">Все статусы</option></select>
+      <select id="clientSourceFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
+    </div>
+    <div class="panel">
+      <div class="tablewrap">
+        <table id="clientTable">
+          <thead><tr>
+            <th>Старт</th><th>Финиш</th><th>Дней</th><th>Канал</th><th>Имя</th><th>Telegram</th><th>Статус</th><th>Партнёр</th><th>Комментарий</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- PARTNERS -->
+  <section class="view" id="view-partners">
+    <div class="cards" id="partnerCards"></div>
+    <div class="toolbar">
+      <button class="btn primary" onclick="openPartner()">+ Партнёр</button>
+      <input type="search" id="partnerSearch" placeholder="Поиск…">
+      <select id="partnerStatusFilter" style="width:auto;min-width:170px"><option value="">Все статусы</option></select>
+    </div>
+    <div class="panel">
+      <div class="tablewrap">
+        <table id="partnerTable">
+          <thead><tr>
+            <th>Старт</th><th>Финиш</th><th>Дней</th><th>Канал</th><th>Имя</th><th>Telegram</th><th>Ниша</th><th>Статус</th>
+            <th class="num">Лидов</th><th class="num">Клиентов</th><th>Конверсия</th><th>Комментарий</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section class="view active" id="view-charts">
+    <div class="charts">
+      <div class="chartbox"><h3>Воронка лидов</h3><div id="chartFunnel"></div></div>
+      <div class="chartbox"><h3>Лиды по каналам</h3><div id="chartChanLeads"></div></div>
+      <div class="chartbox"><h3>Динамика по месяцам</h3><div id="chartMonthly"></div>
+        <div class="legend"><span><i style="background:#3b5bdb"></i>Новые лиды</span><span><i style="background:#2f9e44"></i>Стали клиентом</span><span><i style="background:#e8590c"></i>Стартовало клиентов</span></div>
+      </div>
+      <div class="chartbox"><h3>Клиенты по статусам</h3><div id="chartClientStatus"></div></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <div class="head">Синхронизация с GitHub</div>
+      <div style="padding:16px">
+        <div class="settings-grid">
+          <label class="f"><span>Owner (пользователь/организация)</span><input id="ghOwner" placeholder="Alex-code-ux"></label>
+          <label class="f"><span>Repository (приватный)</span><input id="ghRepo" placeholder="crm-data"></label>
+          <label class="f"><span>Ветка</span><input id="ghBranch" placeholder="main"></label>
+          <label class="f"><span>Путь к файлу данных</span><input id="ghPath" placeholder="data.json"></label>
+          <label class="f full"><span>Personal Access Token (fine-grained, доступ Contents: Read&Write к этому репо)</span>
+            <input id="ghToken" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+        </div>
+        <div class="hint">Токен хранится только в этом браузере (localStorage), никуда кроме api.github.com не отправляется. Для приватного репо и одного пользователя это безопасно. Никогда не коммить токен в сам репозиторий.</div>
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" id="btnTest">Проверить доступ</button>
+          <button class="btn" id="btnLoad2">Загрузить данные</button>
+          <button class="btn primary" id="btnSave2">Сохранить данные</button>
+          <span id="ghStatus" class="hint" style="align-self:center"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="head">Каналы привлечения (справочник)</div>
+      <div style="padding:16px">
+        <div class="tagline" id="chanChips"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;max-width:420px">
+          <input id="newChan" placeholder="Новый канал…">
+          <button class="btn" onclick="addChannel()">Добавить</button>
+        </div>
+        <div class="hint">Каналы используются в выпадающих списках лидов, клиентов и партнёров.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="head">Данные</div>
+      <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="btnExport">Экспорт JSON</button>
+        <button class="btn" id="btnImport">Импорт JSON</button>
+        <input type="file" id="fileImport" accept="application/json" style="display:none">
+        <button class="btn danger" id="btnWipe">Очистить локально</button>
+        <span class="hint" id="localInfo" style="align-self:center"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="m-head"><span id="mTitle">Запись</span><button class="x" onclick="closeModal()">×</button></div>
+    <div class="m-body" id="mBody"></div>
+    <div class="m-foot">
+      <button class="btn danger" id="mDelete" style="visibility:hidden" onclick="deleteCurrent()">Удалить</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost" onclick="closeModal()">Отмена</button>
+        <button class="btn primary" id="mSave" onclick="saveModal()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================= МОДЕЛЬ ============================= */
+const LEAD_STATUSES = ["Написал","Не ответил","Отказался","Согласился","Отвалился после согласия","Стал клиентом"];
+const AGREED_SET = new Set(["Согласился","Отвалился после согласия","Стал клиентом"]);
+const CLIENT_STATUSES = ["В работе","Пауза","Завершён","Отменён"];
+const PARTNER_STATUSES = ["Надо написать","Не сотрудничаем","Сотрудничаем"];
+// конечные статусы — при переходе в них дата финиша ставится автоматически
+const CLIENT_TERMINAL = new Set(["Завершён","Отменён"]);
+const PARTNER_TERMINAL = new Set(["Не сотрудничаем"]);
+const CLIENT_COLORS = {"В работе":"var(--st-work)","Пауза":"var(--st-pause)","Завершён":"var(--st-done)","Отменён":"var(--st-cancel)"};
+const LEAD_PILL = {
+  "Написал":["#334","#eef1f8"],"Не ответил":["#8a6d0b","#fff3cd"],"Отказался":["#b02a2a","#f8d7da"],
+  "Согласился":["#1b6b2b","#d7f0dc"],"Отвалился после согласия":["#8a3b0b","#ffe3cf"],"Стал клиентом":["#fff","#3b5bdb"]
+};
+const PARTNER_PILL = {
+  "Надо написать":["#8a6d0b","#fff3cd"],"Не сотрудничаем":["#b02a2a","#f8d7da"],"Сотрудничаем":["#1b6b2b","#d7f0dc"]
+};
+const DEFAULT_CHANNELS = ["Авито","Профи.ру","Личные контакты","Партнерский канал","Свои соцсети/Telegram","Рефералы от клиентов"];
+
+let db = null, ghSha = null, dirty = false;
+
+function blankDB(){
+  return { channels:[...DEFAULT_CHANNELS], leads:[], clients:[], partners:[], updatedAt:null };
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function today(){ const d=new Date(); return d.toISOString().slice(0,10); }
+function daysBetween(a,b){ if(!a) return null; const s=new Date(a), e=b?new Date(b):new Date(); return Math.max(0, Math.round((e-s)/86400000)); }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pct(n){ return (n*100).toFixed(0)+"%"; }
+function tgLink(t){ if(!t) return '<span class="muted">—</span>'; const h=t.replace(/^@/,''); return `<span class="tg"><a href="https://t.me/${esc(h)}" target="_blank" rel="noopener">@${esc(h)}</a></span>`; }
+
+/* ============================= ХРАНЕНИЕ ============================= */
+const LS_DATA="crm.data", LS_CFG="crm.ghcfg", LS_TOKEN="crm.ghtoken", LS_SHA="crm.ghsha";
+function loadLocal(){
+  try{ const raw=localStorage.getItem(LS_DATA); db = raw?JSON.parse(raw):blankDB(); }
+  catch(e){ db=blankDB(); }
+  if(!db.channels||!db.channels.length) db.channels=[...DEFAULT_CHANNELS];
+  ghSha = localStorage.getItem(LS_SHA)||null;
+}
+function saveLocal(mark=true){
+  db.updatedAt=new Date().toISOString();
+  localStorage.setItem(LS_DATA, JSON.stringify(db));
+  if(mark) setDirty(true);
+  updateLocalInfo();
+}
+function setDirty(v){ dirty=v; renderSync(); }
+function updateLocalInfo(){
+  const el=document.getElementById('localInfo');
+  if(el) el.textContent = `Лидов: ${db.leads.length} · Клиентов: ${db.clients.length} · Партнёров: ${db.partners.length}` + (db.updatedAt?` · изменено ${new Date(db.updatedAt).toLocaleString('ru-RU')}`:'');
+}
+
+/* ============================= GITHUB ============================= */
+function ghCfg(){
+  return {
+    owner:(document.getElementById('ghOwner').value||'').trim(),
+    repo:(document.getElementById('ghRepo').value||'').trim(),
+    branch:(document.getElementById('ghBranch').value||'main').trim(),
+    path:(document.getElementById('ghPath').value||'data.json').trim(),
+    token:(document.getElementById('ghToken').value||'').trim()
+  };
+}
+function saveCfg(){
+  const c=ghCfg();
+  localStorage.setItem(LS_CFG, JSON.stringify({owner:c.owner,repo:c.repo,branch:c.branch,path:c.path}));
+  localStorage.setItem(LS_TOKEN, c.token);
+}
+function restoreCfg(){
+  try{
+    const c=JSON.parse(localStorage.getItem(LS_CFG)||'{}');
+    document.getElementById('ghOwner').value=c.owner||'';
+    document.getElementById('ghRepo').value=c.repo||'';
+    document.getElementById('ghBranch').value=c.branch||'main';
+    document.getElementById('ghPath').value=c.path||'data.json';
+  }catch(e){}
+  document.getElementById('ghToken').value=localStorage.getItem(LS_TOKEN)||'';
+}
+function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
+function b64decode(str){ return decodeURIComponent(escape(atob(str.replace(/\n/g,'')))); }
+
+async function ghApi(path, opts={}){
+  const c=ghCfg();
+  if(!c.owner||!c.repo||!c.token) throw new Error('Заполни owner, repo и токен в Настройках');
+  const res=await fetch(`https://api.github.com/repos/${c.owner}/${c.repo}${path}`,{
+    ...opts,
+    headers:{'Accept':'application/vnd.github+json','Authorization':`Bearer ${c.token}`,'X-GitHub-Api-Version':'2022-11-28',...(opts.headers||{})}
+  });
+  return res;
+}
+async function ghTest(){
+  ghSetStatus('Проверяю…');
+  try{
+    const r=await ghApi('');
+    if(r.ok){ const j=await r.json(); ghSetStatus(`✓ Доступ есть: ${j.full_name}${j.private?' (private)':' (public)'}`,'ok'); }
+    else ghSetStatus(`✗ ${r.status} ${r.statusText}. Проверь имя репо и права токена.`,'err');
+  }catch(e){ ghSetStatus('✗ '+e.message,'err'); }
+}
+async function ghLoad(){
+  ghSetStatus('Загружаю…'); renderSync('loading');
+  try{
+    const c=ghCfg();
+    const r=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
+    if(r.status===404){ ghSetStatus('Файл data.json ещё не создан — будет создан при первом сохранении.','warn'); setDirty(true); return; }
+    if(!r.ok){ ghSetStatus(`✗ ${r.status} ${r.statusText}`,'err'); renderSync(); return; }
+    const j=await r.json();
+    const content=b64decode(j.content);
+    const parsed=JSON.parse(content);
+    db = normalize(parsed); ghSha=j.sha;
+    localStorage.setItem(LS_SHA, ghSha);
+    localStorage.setItem(LS_DATA, JSON.stringify(db));
+    setDirty(false); ghSetStatus('✓ Данные загружены из GitHub','ok');
+    renderAll(); toast('Загружено из GitHub');
+  }catch(e){ ghSetStatus('✗ '+e.message,'err'); renderSync(); }
+}
+async function ghSave(){
+  ghSetStatus('Сохраняю…'); renderSync('loading');
+  try{
+    const c=ghCfg();
+    db.updatedAt=new Date().toISOString();
+    const body={ message:`crm: update ${new Date().toISOString()}`, content:b64encode(JSON.stringify(db,null,2)), branch:c.branch };
+    if(ghSha) body.sha=ghSha;
+    let r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)});
+    if(r.status===409 || (r.status===422 && ghSha)){
+      // sha устарел — подтягиваем свежий и повторяем
+      const g=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
+      if(g.ok){ const gj=await g.json(); body.sha=gj.sha; r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)}); }
+    }
+    if(!r.ok){ const t=await r.text(); ghSetStatus(`✗ ${r.status}: ${t.slice(0,140)}`,'err'); renderSync(); return; }
+    const j=await r.json();
+    ghSha=j.content.sha; localStorage.setItem(LS_SHA,ghSha);
+    localStorage.setItem(LS_DATA, JSON.stringify(db));
+    setDirty(false); ghSetStatus('✓ Сохранено в GitHub','ok'); toast('Сохранено в GitHub');
+  }catch(e){ ghSetStatus('✗ '+e.message,'err'); renderSync(); }
+}
+function ghSetStatus(t,cls){ const el=document.getElementById('ghStatus'); el.textContent=t; el.style.color= cls==='ok'?'var(--ok)':cls==='err'?'var(--danger)':cls==='warn'?'var(--warn)':'var(--muted)'; }
+
+function normalize(parsed){
+  const d=blankDB();
+  if(Array.isArray(parsed.channels)&&parsed.channels.length) d.channels=parsed.channels;
+  d.leads=(parsed.leads||[]).map(x=>({id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'Написал',partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}));
+  d.clients=(parsed.clients||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'В работе',partner:x.partner||'',comment:x.comment||''}));
+  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Отказался'?'Не сотрудничаем':(x.status||'Надо написать')),comment:x.comment||''}));
+  d.updatedAt=parsed.updatedAt||null;
+  return d;
+}
+
+/* ============================= ВЫЧИСЛЕНИЯ ============================= */
+function channelStats(ch){
+  const leads=db.leads.filter(l=>l.channel===ch);
+  const written=leads.length;
+  const agreed=leads.filter(l=>AGREED_SET.has(l.status)).length;
+  const becameClient=leads.filter(l=>l.status==='Стал клиентом').length;
+  const partners=db.partners.filter(p=>p.source===ch);
+  const partnersWritten=partners.length;
+  const partnersCooperating=partners.filter(p=>p.status==='Сотрудничаем').length;
+  const partnersDeclined=partners.filter(p=>p.status==='Не сотрудничаем').length;
+  return {written,agreed,agreedConv:written?agreed/written:0,becameClient,clientConv:written?becameClient/written:0,
+    partnersWritten,partnersCooperating,partnersDeclined,partnerConv:partnersWritten?partnersCooperating/partnersWritten:0};
+}
+function partnerComputed(p){
+  const leadsSent=db.leads.filter(l=>l.partner===p.name && p.name).length;
+  const clientsBrought=db.clients.filter(c=>c.partner===p.name && p.name).length;
+  return {totalDays:daysBetween(p.startDate,p.endDate),leadsSent,clientsBrought,conv:leadsSent?clientsBrought/leadsSent:0};
+}
+
+/* ============================= РЕНДЕР ============================= */
+function renderSync(state){
+  const dot=document.getElementById('syncDot'), txt=document.getElementById('syncText');
+  dot.className='dot';
+  if(state==='loading'){ txt.textContent='синхронизация…'; return; }
+  if(dirty){ dot.classList.add('dirty'); txt.textContent='есть несохранённые изменения'; }
+  else if(ghSha){ dot.classList.add('ok'); txt.textContent='синхронизировано'; }
+  else { txt.textContent='локально (не в GitHub)'; }
+}
+function renderAll(){
+  renderDash(); renderLeads(); renderClients(); renderPartners(); renderCharts();
+  renderChannelChips(); refreshChannelSelects(); updateLocalInfo(); renderSync();
+}
+
+/* ---- Dashboard ---- */
+function renderDash(){
+  const totalWritten=db.leads.length;
+  const totalClients=db.clients.length;
+  const activeClients=db.clients.filter(c=>c.status==='В работе'||c.status==='Пауза').length;
+  const cooperating=db.partners.filter(p=>p.status==='Сотрудничаем').length;
+  const conv=totalWritten?db.leads.filter(l=>l.status==='Стал клиентом').length/totalWritten:0;
+  document.getElementById('dashCards').innerHTML=[
+    card('Написано лидов',totalWritten),
+    card('Стали клиентом',db.leads.filter(l=>l.status==='Стал клиентом').length,'общая конв. '+pct(conv)),
+    card('Клиентов всего',totalClients,'активных '+activeClients),
+    card('Партнёров сотрудничает',cooperating,'из '+db.partners.length),
+  ].join('');
+  const rows=db.channels.map(ch=>{ const s=channelStats(ch); return {ch,s}; });
+  document.querySelector('#chanLeadTable tbody').innerHTML = rows.map(({ch,s})=>`
+    <tr>
+      <td><b>${esc(ch)}</b></td>
+      <td class="num">${s.written}</td>
+      <td class="num">${s.agreed}</td>
+      <td>${convBar(s.agreedConv)}</td>
+      <td class="num">${s.becameClient}</td>
+      <td>${convBar(s.clientConv)}</td>
+    </tr>`).join('') || `<tr><td colspan="6" class="empty">Нет каналов</td></tr>`;
+  document.querySelector('#chanPartnerTable tbody').innerHTML = rows.map(({ch,s})=>`
+    <tr>
+      <td><b>${esc(ch)}</b></td>
+      <td class="num">${s.partnersWritten}</td>
+      <td class="num">${s.partnersCooperating}</td>
+      <td class="num">${s.partnersDeclined}</td>
+      <td>${convBar(s.partnerConv)}</td>
+    </tr>`).join('') || `<tr><td colspan="5" class="empty">Нет каналов</td></tr>`;
+}
+function card(k,v,sub){ return `<div class="card"><div class="k">${esc(k)}</div><div class="v">${v}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>`; }
+function convBar(x){ return `<div class="bararea"><div class="mini"><i style="width:${Math.round(x*100)}%"></i></div><span class="muted">${pct(x)}</span></div>`; }
+
+/* ---- Leads ---- */
+function renderLeads(){
+  const q=(document.getElementById('leadSearch').value||'').toLowerCase();
+  const sf=document.getElementById('leadStatusFilter').value;
+  const cf=document.getElementById('leadChanFilter').value;
+  const tb=document.querySelector('#leadTable tbody');
+  const rows=db.leads.filter(l=>{
+    if(sf&&l.status!==sf) return false;
+    if(cf&&l.channel!==cf) return false;
+    if(q){ const hay=(l.name+' '+l.telegram+' '+l.comment+' '+l.partner).toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  }).sort((a,b)=>(b.dateContacted||'').localeCompare(a.dateContacted||''));
+  tb.innerHTML = rows.map(l=>{
+    const [fg,bg]=LEAD_PILL[l.status]||['#334','#eef1f8'];
+    const linked = l.clientId && db.clients.some(c=>c.id===l.clientId);
+    const mark = linked ? `<span class="pill" style="color:#1b6b2b;background:#d7f0dc" title="Есть карточка в Клиентах">✓ в клиентах</span>` : '';
+    return `<tr onclick="openLead('${l.id}')" style="cursor:pointer">
+      <td>${esc(l.dateContacted||'—')}</td>
+      <td>${esc(l.channel||'—')}</td>
+      <td><b>${esc(l.name||'—')}</b></td>
+      <td>${tgLink(l.telegram)}</td>
+      <td><span class="pill" style="color:${fg};background:${bg}">${esc(l.status)}</span></td>
+      <td>${esc(l.partner||'—')}</td>
+      <td class="muted">${esc((l.comment||'').slice(0,60))}</td>
+      <td class="rowact">${mark}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" class="empty">Лидов пока нет. Нажми «+ Лид».</td></tr>`;
+}
+
+/* ---- Clients ---- */
+function renderClients(){
+  const cnt={}; CLIENT_STATUSES.forEach(s=>cnt[s]=0);
+  db.clients.forEach(c=>{ if(cnt[c.status]!=null) cnt[c.status]++; });
+  const activeNow=cnt['В работе']+cnt['Пауза'];
+  document.getElementById('clientCards').innerHTML=[
+    card('Активно сейчас',activeNow,'в работе + пауза'),
+    card('В работе',cnt['В работе']),
+    card('Пауза',cnt['Пауза']),
+    card('Завершён',cnt['Завершён']),
+    card('Отменён',cnt['Отменён']),
+  ].join('');
+  const q=(document.getElementById('clientSearch').value||'').toLowerCase();
+  const sf=document.getElementById('clientStatusFilter').value;
+  const cf=document.getElementById('clientSourceFilter').value;
+  const tb=document.querySelector('#clientTable tbody');
+  const rows=db.clients.filter(c=>{
+    if(sf&&c.status!==sf) return false;
+    if(cf&&c.source!==cf) return false;
+    if(q){ const hay=(c.name+' '+c.telegram+' '+c.comment+' '+c.partner).toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  }).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||''));
+  tb.innerHTML = rows.map(c=>{
+    const days=daysBetween(c.startDate,c.endDate);
+    return `<tr style="background:${CLIENT_COLORS[c.status]||'transparent'};cursor:pointer" onclick="openClient('${c.id}')">
+      <td>${esc(c.startDate||'—')}</td>
+      <td>${esc(c.endDate||'—')}</td>
+      <td class="num">${days==null?'—':days}</td>
+      <td>${esc(c.source||'—')}</td>
+      <td><b>${esc(c.name||'—')}</b></td>
+      <td>${tgLink(c.telegram)}</td>
+      <td><b>${esc(c.status)}</b></td>
+      <td>${esc(c.partner||'—')}</td>
+      <td class="muted">${esc((c.comment||'').slice(0,50))}</td>
+      <td></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="10" class="empty">Клиентов пока нет.</td></tr>`;
+}
+
+/* ---- Partners ---- */
+function renderPartners(){
+  const coop=db.partners.filter(p=>p.status==='Сотрудничаем').length;
+  const towrite=db.partners.filter(p=>p.status==='Надо написать').length;
+  const totalLeads=db.leads.filter(l=>l.partner).length;
+  const totalCli=db.clients.filter(c=>c.partner).length;
+  document.getElementById('partnerCards').innerHTML=[
+    card('Сотрудничаем',coop),
+    card('Надо написать',towrite),
+    card('Лидов от партнёров',totalLeads),
+    card('Клиентов от партнёров',totalCli),
+  ].join('');
+  const q=(document.getElementById('partnerSearch').value||'').toLowerCase();
+  const sf=document.getElementById('partnerStatusFilter').value;
+  const tb=document.querySelector('#partnerTable tbody');
+  const rows=db.partners.filter(p=>{
+    if(sf&&p.status!==sf) return false;
+    if(q){ const hay=(p.name+' '+p.telegram+' '+p.comment+' '+p.niche).toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  }).sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||''));
+  tb.innerHTML = rows.map(p=>{
+    const cm=partnerComputed(p);
+    const [fg,bg]=PARTNER_PILL[p.status]||['#334','#eef1f8'];
+    return `<tr style="cursor:pointer" onclick="openPartner('${p.id}')">
+      <td>${esc(p.startDate||'—')}</td>
+      <td>${esc(p.endDate||'—')}</td>
+      <td class="num">${cm.totalDays==null?'—':cm.totalDays}</td>
+      <td>${esc(p.source||'—')}</td>
+      <td><b>${esc(p.name||'—')}</b></td>
+      <td>${tgLink(p.telegram)}</td>
+      <td>${esc(p.niche||'—')}</td>
+      <td><span class="pill" style="color:${fg};background:${bg}">${esc(p.status)}</span></td>
+      <td class="num">${cm.leadsSent}</td>
+      <td class="num">${cm.clientsBrought}</td>
+      <td>${convBar(cm.conv)}</td>
+      <td class="muted">${esc((p.comment||'').slice(0,40))}</td>
+      <td></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="13" class="empty">Партнёров пока нет.</td></tr>`;
+}
+
+/* ============================= МОДАЛКИ ============================= */
+let editKind=null, editId=null;
+function chanOptions(sel){ return db.channels.map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join(''); }
+function partnerOptions(sel){ return `<option value="">— нет —</option>`+db.partners.map(p=>`<option ${p.name===sel?'selected':''}>${esc(p.name)}</option>`).join(''); }
+function statusOptions(list,sel){ return list.map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join(''); }
+function field(label,inner,full){ return `<label class="f ${full?'full':''}"><span>${label}</span>${inner}</label>`; }
+
+function openLead(id){
+  editKind='lead'; editId=id||null;
+  const l = id ? db.leads.find(x=>x.id===id) : {dateContacted:today(),channel:db.channels[0]||'',name:'',telegram:'',status:'Написал',partner:'',comment:''};
+  document.getElementById('mTitle').textContent = id?'Лид':'Новый лид';
+  document.getElementById('mBody').innerHTML =
+    field('Дата контакта',`<input type="date" id="f_date" value="${esc(l.dateContacted)}">`)+
+    field('Канал',`<select id="f_channel">${chanOptions(l.channel)}</select>`)+
+    field('Имя',`<input id="f_name" value="${esc(l.name)}">`)+
+    field('Telegram',`<input id="f_tg" value="${esc(l.telegram)}" placeholder="@username">`)+
+    field('Статус',`<select id="f_status">${statusOptions(LEAD_STATUSES,l.status)}</select>`)+
+    field('Партнёр (кто прислал)',`<select id="f_partner">${partnerOptions(l.partner)}</select>`)+
+    field('Комментарий',`<textarea id="f_comment" rows="2">${esc(l.comment)}</textarea>`,true);
+  showModal(!!id);
+}
+function openClient(id, prefill){
+  editKind='client'; editId=id||null;
+  const c = id ? db.clients.find(x=>x.id===id) : Object.assign({startDate:today(),endDate:'',source:db.channels[0]||'',name:'',telegram:'',status:'В работе',partner:'',comment:''}, prefill||{});
+  document.getElementById('mTitle').textContent = id?'Клиент':'Новый клиент';
+  document.getElementById('mBody').innerHTML =
+    field('Дата старта',`<input type="date" id="f_start" value="${esc(c.startDate)}">`)+
+    field('Дата финиша',`<input type="date" id="f_end" value="${esc(c.endDate)}">`)+
+    field('Канал',`<select id="f_source">${chanOptions(c.source)}</select>`)+
+    field('Статус',`<select id="f_status">${statusOptions(CLIENT_STATUSES,c.status)}</select>`)+
+    field('Имя',`<input id="f_name" value="${esc(c.name)}">`)+
+    field('Telegram',`<input id="f_tg" value="${esc(c.telegram)}" placeholder="@username">`)+
+    field('Партнёр',`<select id="f_partner">${partnerOptions(c.partner)}</select>`)+
+    field('',`<div class="hint" style="align-self:end">Дата финиша ставится сама при статусе «Завершён»/«Отменён». Дней — считается автоматически.</div>`)+
+    field('Комментарий',`<textarea id="f_comment" rows="2">${esc(c.comment)}</textarea>`,true);
+  showModal(!!id);
+}
+function openPartner(id){
+  editKind='partner'; editId=id||null;
+  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.channels[0]||'',name:'',telegram:'',niche:'',status:'Надо написать',comment:''};
+  document.getElementById('mTitle').textContent = id?'Партнёр':'Новый партнёр';
+  document.getElementById('mBody').innerHTML =
+    field('Дата старта',`<input type="date" id="f_start" value="${esc(p.startDate)}">`)+
+    field('Дата финиша',`<input type="date" id="f_end" value="${esc(p.endDate)}">`)+
+    field('Канал (источник)',`<select id="f_source">${chanOptions(p.source)}</select>`)+
+    field('Статус',`<select id="f_status">${statusOptions(PARTNER_STATUSES,p.status)}</select>`)+
+    field('Имя',`<input id="f_name" value="${esc(p.name)}">`)+
+    field('Telegram',`<input id="f_tg" value="${esc(p.telegram)}" placeholder="@username">`)+
+    field('Ниша',`<input id="f_niche" value="${esc(p.niche)}">`,true)+
+    field('Комментарий',`<textarea id="f_comment" rows="2">${esc(p.comment)}</textarea>`,true);
+  showModal(!!id);
+}
+function showModal(canDelete){ document.getElementById('mDelete').style.visibility=canDelete?'visible':'hidden'; document.getElementById('modalBg').classList.add('open'); }
+function closeModal(){ document.getElementById('modalBg').classList.remove('open'); editKind=null; editId=null; }
+function val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+// конечный статус + пустая дата → ставим сегодня; промежуточный → очищаем дату финиша
+function applyAutoEnd(rec, terminalSet){
+  if(terminalSet.has(rec.status)){ if(!rec.endDate) rec.endDate=today(); }
+  else { rec.endDate=''; }
+  return rec;
+}
+function saveModal(){
+  if(editKind==='lead'){
+    const prev = editId ? db.leads.find(x=>x.id===editId) : null;
+    const rec={id:editId||uid(),dateContacted:val('f_date'),channel:val('f_channel'),name:val('f_name'),telegram:val('f_tg'),status:val('f_status'),partner:val('f_partner'),comment:val('f_comment'),clientId:(prev&&prev.clientId)||''};
+    // авто-добавление в Клиенты при статусе «Стал клиентом» (без дублей)
+    if(rec.status==='Стал клиентом'){
+      const has = rec.clientId && db.clients.some(c=>c.id===rec.clientId);
+      if(!has){
+        const cli={id:uid(),startDate:today(),endDate:'',source:rec.channel,name:rec.name,telegram:rec.telegram,status:'В работе',partner:rec.partner,comment:rec.comment};
+        db.clients.unshift(cli); rec.clientId=cli.id; toast('Лид добавлен в Клиенты');
+      }
+    }
+    upsert(db.leads,rec);
+  } else if(editKind==='client'){
+    const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),status:val('f_status'),partner:val('f_partner'),comment:val('f_comment')};
+    applyAutoEnd(rec,CLIENT_TERMINAL);
+    upsert(db.clients,rec);
+  } else if(editKind==='partner'){
+    const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),niche:val('f_niche'),status:val('f_status'),comment:val('f_comment')};
+    applyAutoEnd(rec,PARTNER_TERMINAL);
+    upsert(db.partners,rec);
+  }
+  saveLocal(); renderAll(); closeModal();
+}
+function upsert(arr,rec){ const i=arr.findIndex(x=>x.id===rec.id); if(i>=0) arr[i]=rec; else arr.unshift(rec); }
+function deleteCurrent(){
+  if(!editId) return; if(!confirm('Удалить запись?')) return;
+  if(editKind==='lead') db.leads=db.leads.filter(x=>x.id!==editId);
+  if(editKind==='client') db.clients=db.clients.filter(x=>x.id!==editId);
+  if(editKind==='partner') db.partners=db.partners.filter(x=>x.id!==editId);
+  saveLocal(); renderAll(); closeModal();
+}
+/* ============================= КАНАЛЫ ============================= */
+function renderChannelChips(){
+  document.getElementById('chanChips').innerHTML = db.channels.map((c,i)=>
+    `<span class="chan-chip">${esc(c)}<button title="Переименовать" style="color:var(--muted)" onclick="renameChannel(${i})">✎</button><button title="Удалить" onclick="removeChannel(${i})">×</button></span>`).join('') || '<span class="muted">Нет каналов</span>';
+}
+function renameChannel(i){
+  const old=db.channels[i];
+  const nv=(prompt('Новое название канала:',old)||'').trim();
+  if(!nv||nv===old) return;
+  if(db.channels.includes(nv)){ toast('Такой канал уже есть'); return; }
+  db.channels[i]=nv;
+  // обновляем ссылки во всех записях
+  db.leads.forEach(l=>{ if(l.channel===old) l.channel=nv; });
+  db.clients.forEach(c=>{ if(c.source===old) c.source=nv; });
+  db.partners.forEach(p=>{ if(p.source===old) p.source=nv; });
+  saveLocal(); renderAll(); toast('Канал переименован');
+}
+function addChannel(){
+  const el=document.getElementById('newChan'); const v=el.value.trim();
+  if(!v) return; if(db.channels.includes(v)){ toast('Такой канал уже есть'); return; }
+  db.channels.push(v); el.value=''; saveLocal(); renderChannelChips(); refreshChannelSelects(); renderDash();
+}
+function removeChannel(i){
+  const ch=db.channels[i];
+  const used = db.leads.some(l=>l.channel===ch)||db.clients.some(c=>c.source===ch)||db.partners.some(p=>p.source===ch);
+  if(used && !confirm(`Канал «${ch}» используется в записях. Всё равно удалить из справочника? Записи не изменятся.`)) return;
+  db.channels.splice(i,1); saveLocal(); renderChannelChips(); refreshChannelSelects(); renderDash();
+}
+function refreshChannelSelects(){
+  fillSelect('leadChanFilter','Все каналы');
+  fillSelect('clientSourceFilter','Все каналы');
+}
+function fillSelect(id,allLabel){
+  const el=document.getElementById(id); if(!el) return; const cur=el.value;
+  el.innerHTML=`<option value="">${allLabel}</option>`+db.channels.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+}
+
+/* ============================= ГРАФИКИ (SVG) ============================= */
+function renderCharts(){
+  // Воронка
+  const written=db.leads.length;
+  const agreed=db.leads.filter(l=>AGREED_SET.has(l.status)).length;
+  const became=db.leads.filter(l=>l.status==='Стал клиентом').length;
+  document.getElementById('chartFunnel').innerHTML = funnelSVG([
+    ['Написал',written,'#3b5bdb'],['Согласился',agreed,'#4c6ef5'],['Стал клиентом',became,'#2f9e44']
+  ]);
+  // Лиды по каналам
+  const chLeads=db.channels.map(ch=>[ch,db.leads.filter(l=>l.channel===ch).length]).filter(x=>x[1]>0);
+  document.getElementById('chartChanLeads').innerHTML = hbarSVG(chLeads,false) || emptyChart();
+  // Клиенты по статусам
+  const cs=CLIENT_STATUSES.map(s=>[s,db.clients.filter(c=>c.status===s).length]);
+  document.getElementById('chartClientStatus').innerHTML = donutSVG(cs,{"В работе":"#e6b800","Пауза":"#5b8def","Завершён":"#51a35b","Отменён":"#e05151"}) || emptyChart();
+  // Динамика по месяцам
+  document.getElementById('chartMonthly').innerHTML = monthlySVG();
+}
+function emptyChart(){ return `<div class="empty">Нет данных</div>`; }
+function funnelSVG(rows){
+  const max=Math.max(1,...rows.map(r=>r[1]));
+  const W=480,rh=48,gap=10; const H=rows.length*(rh+gap);
+  let y=0,svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  rows.forEach(([label,v,color],i)=>{
+    const w=Math.max(2,(v/max)*(W-320));
+    const prev = i>0 ? rows[i-1][1] : null;
+    const rel = i===0 ? '' : (prev>0 ? ` · ${pct(v/prev)} от пред.` : ' · —');
+    svg+=`<rect x="130" y="${y+6}" width="${w}" height="${rh-12}" rx="6" fill="${color}"/>`;
+    svg+=`<text x="0" y="${y+rh/2+4}" font-size="13" fill="#444">${esc(label)}</text>`;
+    svg+=`<text x="${135+w}" y="${y+rh/2+4}" font-size="12" fill="#222"><tspan font-weight="700">${v}</tspan><tspan fill="#888">${esc(rel)}</tspan></text>`;
+    y+=rh+gap;
+  });
+  return svg+'</svg>';
+}
+function hbarSVG(rows,isPct){
+  if(!rows.length) return '';
+  rows=rows.slice().sort((a,b)=>b[1]-a[1]);
+  const max=isPct?1:Math.max(1,...rows.map(r=>r[1]));
+  const W=420,rh=30,gap=8,labelW=150; const H=rows.length*(rh+gap);
+  let y=0,svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  rows.forEach(([label,v])=>{
+    const w=Math.max(2,(v/max)*(W-labelW-50));
+    svg+=`<text x="0" y="${y+rh/2+4}" font-size="12" fill="#444">${esc(label.length>20?label.slice(0,19)+'…':label)}</text>`;
+    svg+=`<rect x="${labelW}" y="${y+4}" width="${w}" height="${rh-8}" rx="5" fill="#3b5bdb"/>`;
+    svg+=`<text x="${labelW+w+6}" y="${y+rh/2+4}" font-size="12" fill="#222" font-weight="700">${isPct?pct(v):v}</text>`;
+    y+=rh+gap;
+  });
+  return svg+'</svg>';
+}
+function donutSVG(rows,colors){
+  const total=rows.reduce((s,r)=>s+r[1],0);
+  if(!total) return '';
+  const cx=90,cy=90,r=70,sw=28; let a=-Math.PI/2;
+  let svg=`<svg viewBox="0 0 300 180" width="100%">`;
+  rows.forEach(([label,v])=>{
+    if(!v) return; const frac=v/total, a2=a+frac*2*Math.PI;
+    const x1=cx+r*Math.cos(a),y1=cy+r*Math.sin(a),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+    const large=frac>0.5?1:0;
+    svg+=`<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${colors[label]||'#888'}" stroke-width="${sw}"/>`;
+    a=a2;
+  });
+  svg+=`<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="700">${total}</text>`;
+  svg+=`<text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="11" fill="#777">клиентов</text>`;
+  // legend
+  let ly=30; rows.forEach(([label,v])=>{ svg+=`<rect x="185" y="${ly-10}" width="11" height="11" rx="3" fill="${colors[label]||'#888'}"/><text x="202" y="${ly}" font-size="12" fill="#444">${esc(label)} — ${v}</text>`; ly+=24; });
+  return svg+'</svg>';
+}
+function monthlySVG(){
+  const map={}; // ym -> {leads, became, clients}
+  const add=(ym,k)=>{ if(!ym) return; (map[ym]=map[ym]||{leads:0,became:0,clients:0})[k]++; };
+  db.leads.forEach(l=>{ const ym=(l.dateContacted||'').slice(0,7); if(ym){ add(ym,'leads'); if(l.status==='Стал клиентом') add(ym,'became'); } });
+  db.clients.forEach(c=>{ const ym=(c.startDate||'').slice(0,7); if(ym) add(ym,'clients'); });
+  const keys=Object.keys(map).sort();
+  if(!keys.length) return emptyChart();
+  const W=500,H=300,pad=36; const max=Math.max(1,...keys.map(k=>Math.max(map[k].leads,map[k].became,map[k].clients)));
+  const xw=(W-pad*2)/Math.max(1,keys.length-1||1);
+  const xat=i=>keys.length===1?W/2:pad+i*xw;
+  const yat=v=>H-pad-(v/max)*(H-pad*2);
+  const line=(key,color)=>{ const d=keys.map((k,i)=>`${i?'L':'M'} ${xat(i).toFixed(1)} ${yat(map[k][key]).toFixed(1)}`).join(' '); return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5"/>`+keys.map((k,i)=>`<circle cx="${xat(i).toFixed(1)}" cy="${yat(map[k][key]).toFixed(1)}" r="3" fill="${color}"/>`).join(''); };
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  // grid + y labels
+  for(let g=0;g<=4;g++){ const yy=pad+(H-pad*2)*g/4, v=Math.round(max*(1-g/4)); svg+=`<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="#eef1f8"/><text x="4" y="${yy+4}" font-size="10" fill="#aaa">${v}</text>`; }
+  keys.forEach((k,i)=>{ svg+=`<text x="${xat(i)}" y="${H-10}" font-size="10" fill="#888" text-anchor="middle">${k}</text>`; });
+  svg+=line('leads','#3b5bdb')+line('became','#2f9e44')+line('clients','#e8590c');
+  return svg+'</svg>';
+}
+
+/* ============================= НАВИГАЦИЯ / UI ============================= */
+document.getElementById('nav').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-view]'); if(!b) return;
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+b.dataset.view).classList.add('active');
+  if(b.dataset.view==='charts') renderCharts();
+});
+['leadSearch','leadStatusFilter','leadChanFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderLeads));
+['clientSearch','clientStatusFilter','clientSourceFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderClients));
+['partnerSearch','partnerStatusFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderPartners));
+document.getElementById('modalBg').addEventListener('click',e=>{ if(e.target.id==='modalBg') closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+// header buttons
+document.getElementById('btnSave').onclick=()=>{ saveCfg(); ghSave(); };
+document.getElementById('btnLoad').onclick=()=>{ saveCfg(); if(dirty && !confirm('Есть несохранённые локальные изменения. Загрузка из GitHub их перезапишет. Продолжить?')) return; ghLoad(); };
+document.getElementById('btnTest').onclick=()=>{ saveCfg(); ghTest(); };
+document.getElementById('btnSave2').onclick=()=>{ saveCfg(); ghSave(); };
+document.getElementById('btnLoad2').onclick=()=>{ saveCfg(); ghLoad(); };
+['ghOwner','ghRepo','ghBranch','ghPath','ghToken'].forEach(id=>document.getElementById(id).addEventListener('change',saveCfg));
+
+// export/import/wipe
+document.getElementById('btnExport').onclick=()=>{
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='data.json'; a.click(); URL.revokeObjectURL(a.href);
+};
+document.getElementById('btnImport').onclick=()=>document.getElementById('fileImport').click();
+document.getElementById('fileImport').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+  r.onload=()=>{ try{ db=normalize(JSON.parse(r.result)); saveLocal(); renderAll(); toast('Импортировано'); }catch(err){ toast('Ошибка чтения файла'); } };
+  r.readAsText(f); e.target.value='';
+};
+document.getElementById('btnWipe').onclick=()=>{ if(confirm('Очистить все локальные данные? (в GitHub останется, если было сохранено)')){ db=blankDB(); ghSha=null; localStorage.removeItem(LS_SHA); saveLocal(); renderAll(); } };
+
+// select filters options
+LEAD_STATUSES.forEach(s=>document.getElementById('leadStatusFilter').insertAdjacentHTML('beforeend',`<option>${s}</option>`));
+CLIENT_STATUSES.forEach(s=>document.getElementById('clientStatusFilter').insertAdjacentHTML('beforeend',`<option>${s}</option>`));
+PARTNER_STATUSES.forEach(s=>document.getElementById('partnerStatusFilter').insertAdjacentHTML('beforeend',`<option>${s}</option>`));
+
+function toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2200); }
+
+/* ============================= СТАРТ ============================= */
+restoreCfg();
+loadLocal();
+renderAll();
+// автозагрузка из GitHub при старте, если настроено и локально пусто
+window.addEventListener('load',()=>{
+  const c=ghCfg();
+  const empty=!db.leads.length&&!db.clients.length&&!db.partners.length;
+  if(c.owner&&c.repo&&c.token&&empty){ ghLoad(); }
+});
+</script>
+</body>
+</html>
