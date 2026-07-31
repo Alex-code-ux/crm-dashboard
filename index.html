@@ -238,7 +238,6 @@
       <div class="chartbox"><h3>Лиды по каналам</h3><div id="chartChanLeads"></div></div>
       <div class="chartbox"><h3>ЛИДы по статусам — текущий месяц</h3><div id="chartLeadStatusMonth"></div></div>
       <div class="chartbox"><h3>ЛИДы по статусам — всё время</h3><div id="chartLeadStatusAll"></div></div>
-      <div class="chartbox"><h3>Клиенты по статусам</h3><div id="chartClientStatus"></div></div>
       <div class="chartbox"><h3>Динамика по месяцам</h3><div id="chartMonthly"></div>
         <div class="legend"><span><i style="background:#3b5bdb"></i>Отправлено</span><span><i style="background:#2f9e44"></i>Стали клиентом</span><span><i style="background:#e8590c"></i>Стартовало клиентов</span></div>
       </div>
@@ -325,20 +324,21 @@
 <script>
 /* ============================= МОДЕЛЬ ============================= */
 const LEAD_STATUSES = ["Написал","Не ответил","Отказался","Стал клиентом"];
-const CLIENT_STATUSES = ["В работе","Пауза","Завершён","Отменён"];
-const PARTNER_STATUSES = ["Надо написать","Не сотрудничаем","Сотрудничаем"];
+const CLIENT_STATUSES = ["В работе","Завершён","Отменён"];
+const PARTNER_STATUSES = ["Не сотрудничаем","Сотрудничаем"];
 // конечные статусы — при переходе в них дата финиша ставится автоматически
 const CLIENT_TERMINAL = new Set(["Завершён","Отменён"]);
 const PARTNER_TERMINAL = new Set(["Не сотрудничаем"]);
-// миграция удалённых статусов лида
+// миграция удалённых статусов
 const LEAD_STATUS_MIGRATE = {"Согласился":"Написал","Отвалился после согласия":"Отказался"};
-const CLIENT_COLORS = {"В работе":"var(--st-work)","Пауза":"var(--st-pause)","Завершён":"var(--st-done)","Отменён":"var(--st-cancel)"};
+const CLIENT_STATUS_MIGRATE = {"Пауза":"В работе"};
+const CLIENT_COLORS = {"В работе":"var(--st-work)","Завершён":"var(--st-done)","Отменён":"var(--st-cancel)"};
 const LEAD_PILL = {
   "Написал":["#334","#eef1f8"],"Не ответил":["#8a6d0b","#fff3cd"],"Отказался":["#b02a2a","#f8d7da"],"Стал клиентом":["#fff","#3b5bdb"]
 };
 const LEAD_STATUS_COLORS = {"Написал":"#5b8def","Не ответил":"#e6b800","Отказался":"#e05151","Стал клиентом":"#2f9e44"};
 const PARTNER_PILL = {
-  "Надо написать":["#8a6d0b","#fff3cd"],"Не сотрудничаем":["#b02a2a","#f8d7da"],"Сотрудничаем":["#1b6b2b","#d7f0dc"]
+  "Не сотрудничаем":["#b02a2a","#f8d7da"],"Сотрудничаем":["#1b6b2b","#d7f0dc"]
 };
 const DEFAULT_CHANNELS = ["Авито","Профи.ру","Личные контакты","Партнерский канал","Свои соцсети/Telegram","Рефералы от клиентов"];
 
@@ -471,8 +471,8 @@ function normalize(parsed){
   d.partnerChannels=(Array.isArray(parsed.partnerChannels)&&parsed.partnerChannels.length)?parsed.partnerChannels:[...d.channels];
   d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,comment:x.comment||''}));
   d.leads=(parsed.leads||[]).map(x=>{ let st=x.status||'Написал'; st=LEAD_STATUS_MIGRATE[st]||st; if(!LEAD_STATUSES.includes(st)) st='Написал'; return {id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}; });
-  d.clients=(parsed.clients||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'В работе',partner:x.partner||'',comment:x.comment||''}));
-  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Отказался'?'Не сотрудничаем':(x.status||'Надо написать')),comment:x.comment||''}));
+  d.clients=(parsed.clients||[]).map(x=>{ let st=x.status||'В работе'; st=CLIENT_STATUS_MIGRATE[st]||st; if(!CLIENT_STATUSES.includes(st)) st='В работе'; return {id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||''}; });
+  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Сотрудничаем'?'Сотрудничаем':'Не сотрудничаем'),comment:x.comment||''}));
   d.updatedAt=parsed.updatedAt||null;
   return d;
 }
@@ -483,9 +483,9 @@ function channelStats(ch){
   const sent=db.outreach.filter(o=>o.channel===ch && inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
   const leadsCount=db.leads.filter(l=>l.channel===ch && inPeriod(l.dateContacted)).length;
   const becameClient=db.clients.filter(c=>c.source===ch && inPeriod(c.startDate)).length;
-  // партнёры: «Написал» = с кем связались (не «Надо написать»), «Партнёров» = сотрудничаем
+  // партнёры: «Написал» = всего контактов, «Партнёров» = сотрудничаем
   const partners=db.partners.filter(p=>p.source===ch && inPeriod(p.startDate));
-  const partnerWritten=partners.filter(p=>p.status!=='Надо написать').length;
+  const partnerWritten=partners.length;
   const partnerCount=partners.filter(p=>p.status==='Сотрудничаем').length;
   return {
     sent, leadsCount, becameClient,
@@ -569,7 +569,6 @@ function renderOutreach(){
   document.getElementById('outreachCards').innerHTML=[
     card('Отправлено за неделю',week),
     card('Отправлено'+(currentPeriod?' ('+currentPeriod+')':' всего'),periodSent),
-    card('Записей рассылок',db.outreach.filter(o=>inPeriod(o.date)).length),
   ].join('');
   const cf=document.getElementById('outreachChanFilter').value;
   const rows=db.outreach.filter(o=>(!cf||o.channel===cf)&&inPeriod(o.date)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -617,11 +616,8 @@ function renderLeads(){
 function renderClients(){
   const cnt={}; CLIENT_STATUSES.forEach(s=>cnt[s]=0);
   db.clients.forEach(c=>{ if(cnt[c.status]!=null) cnt[c.status]++; });
-  const activeNow=cnt['В работе']+cnt['Пауза'];
   document.getElementById('clientCards').innerHTML=[
-    card('Активно сейчас',activeNow,'в работе + пауза'),
     card('В работе',cnt['В работе']),
-    card('Пауза',cnt['Пауза']),
     card('Завершён',cnt['Завершён']),
     card('Отменён',cnt['Отменён']),
   ].join('');
@@ -655,12 +651,10 @@ function renderClients(){
 /* ---- Partners ---- */
 function renderPartners(){
   const coop=db.partners.filter(p=>p.status==='Сотрудничаем').length;
-  const towrite=db.partners.filter(p=>p.status==='Надо написать').length;
   const totalLeads=db.leads.filter(l=>l.partner).length;
   const totalCli=db.clients.filter(c=>c.partner).length;
   document.getElementById('partnerCards').innerHTML=[
-    card('Сотрудничаем',coop),
-    card('Надо написать',towrite),
+    card('Сотрудничаем',coop, 'из '+db.partners.length),
     card('Лидов от партнёров',totalLeads),
     card('Клиентов от партнёров',totalCli),
   ].join('');
@@ -732,7 +726,7 @@ function openClient(id, prefill){
 }
 function openPartner(id){
   editKind='partner'; editId=id||null;
-  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.partnerChannels[0]||'',name:'',telegram:'',niche:'',status:'Надо написать',comment:''};
+  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.partnerChannels[0]||'',name:'',telegram:'',niche:'',status:'Не сотрудничаем',comment:''};
   document.getElementById('mTitle').textContent = id?'Партнёр':'Новый партнёр';
   document.getElementById('mBody').innerHTML =
     field('Дата старта',`<input type="date" id="f_start" value="${esc(p.startDate)}">`)+
@@ -869,9 +863,6 @@ function renderCharts(){
   const leadPie=(scope)=>LEAD_STATUSES.map(s=>[s,db.leads.filter(l=>l.status===s && (scope==='all'||ym(l.dateContacted)===thisMonth())).length]);
   document.getElementById('chartLeadStatusMonth').innerHTML = donutSVG(leadPie('month'),LEAD_STATUS_COLORS,'лидов') || emptyChart();
   document.getElementById('chartLeadStatusAll').innerHTML = donutSVG(leadPie('all'),LEAD_STATUS_COLORS,'лидов') || emptyChart();
-  // Клиенты по статусам (всё время)
-  const cs=CLIENT_STATUSES.map(s=>[s,db.clients.filter(c=>c.status===s).length]);
-  document.getElementById('chartClientStatus').innerHTML = donutSVG(cs,{"В работе":"#e6b800","Пауза":"#5b8def","Завершён":"#51a35b","Отменён":"#e05151"},'клиентов') || emptyChart();
   // Динамика по месяцам
   document.getElementById('chartMonthly').innerHTML = monthlySVG();
 }
