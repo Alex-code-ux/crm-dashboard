@@ -123,9 +123,8 @@
           <thead><tr>
             <th>Канал</th>
             <th class="num">Написал</th>
-            <th class="num">Ответило</th>
-            <th>Конв. в ответ</th>
             <th class="num">Согласилось</th>
+            <th>Конв. в согласие</th>
             <th class="num">Стали клиентом</th>
             <th>Конв. в клиента</th>
           </tr></thead>
@@ -268,14 +267,26 @@
     </div>
 
     <div class="panel">
-      <div class="head">Каналы привлечения (справочник)</div>
+      <div class="head">Каналы привлечения клиентов (справочник)</div>
       <div style="padding:16px">
         <div class="tagline" id="chanChips"></div>
         <div style="display:flex;gap:8px;margin-top:12px;max-width:420px">
           <input id="newChan" placeholder="Новый канал…">
-          <button class="btn" onclick="addChannel()">Добавить</button>
+          <button class="btn" onclick="addChannel('channels','newChan')">Добавить</button>
         </div>
-        <div class="hint">Каналы используются в выпадающих списках лидов, клиентов и партнёров.</div>
+        <div class="hint">Используются в «Рассылках», «Лидах» и «Клиентах».</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="head">Каналы поиска партнёров (справочник)</div>
+      <div style="padding:16px">
+        <div class="tagline" id="partnerChanChips"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;max-width:420px">
+          <input id="newPartnerChan" placeholder="Новый канал…">
+          <button class="btn" onclick="addChannel('partnerChannels','newPartnerChan')">Добавить</button>
+        </div>
+        <div class="hint">Отдельный список — используются только в «Партнёрах».</div>
       </div>
     </div>
 
@@ -331,7 +342,7 @@ const DEFAULT_CHANNELS = ["Авито","Профи.ру","Личные конт�
 let db = null, ghSha = null, dirty = false;
 
 function blankDB(){
-  return { channels:[...DEFAULT_CHANNELS], outreach:[], leads:[], clients:[], partners:[], updatedAt:null };
+  return { channels:[...DEFAULT_CHANNELS], partnerChannels:[...DEFAULT_CHANNELS], outreach:[], leads:[], clients:[], partners:[], updatedAt:null };
 }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function today(){ const d=new Date(); return d.toISOString().slice(0,10); }
@@ -346,6 +357,8 @@ function loadLocal(){
   try{ const raw=localStorage.getItem(LS_DATA); db = raw?JSON.parse(raw):blankDB(); }
   catch(e){ db=blankDB(); }
   if(!db.channels||!db.channels.length) db.channels=[...DEFAULT_CHANNELS];
+  // партнёрский справочник появился позже — при отсутствии копируем текущие каналы
+  if(!Array.isArray(db.partnerChannels)||!db.partnerChannels.length) db.partnerChannels=[...db.channels];
   ['outreach','leads','clients','partners'].forEach(k=>{ if(!Array.isArray(db[k])) db[k]=[]; });
   ghSha = localStorage.getItem(LS_SHA)||null;
 }
@@ -448,6 +461,7 @@ function ghSetStatus(t,cls){ const el=document.getElementById('ghStatus'); el.te
 function normalize(parsed){
   const d=blankDB();
   if(Array.isArray(parsed.channels)&&parsed.channels.length) d.channels=parsed.channels;
+  d.partnerChannels=(Array.isArray(parsed.partnerChannels)&&parsed.partnerChannels.length)?parsed.partnerChannels:[...d.channels];
   d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,replied:+x.replied||0,comment:x.comment||''}));
   d.leads=(parsed.leads||[]).map(x=>({id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'Написал',partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}));
   d.clients=(parsed.clients||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:x.status||'В работе',partner:x.partner||'',comment:x.comment||''}));
@@ -463,13 +477,14 @@ function channelStats(ch){
   const replied=out.reduce((s,o)=>s+(+o.replied||0),0);
   const leads=db.leads.filter(l=>l.channel===ch);
   const agreed=leads.filter(l=>AGREED_SET.has(l.status)).length;
-  const becameClient=leads.filter(l=>l.status==='Стал клиентом').length;
+  const becameClient=db.clients.filter(c=>c.source===ch).length; // из реальных карточек клиентов
   const partners=db.partners.filter(p=>p.source===ch);
   const partnersWritten=partners.length;
   const partnersCooperating=partners.filter(p=>p.status==='Сотрудничаем').length;
   const partnersDeclined=partners.filter(p=>p.status==='Не сотрудничаем').length;
-  return {sent,replied,replyConv:sent?replied/sent:0,agreed,becameClient,clientConv:sent?becameClient/sent:0,
-    partnersWritten,partnersCooperating,partnersDeclined,partnerConv:partnersWritten?partnersCooperating/partnersWritten:0};
+  return {sent,replied,replyConv:sent?replied/sent:null,agreed,agreedConv:sent?agreed/sent:null,
+    becameClient,clientConv:sent?becameClient/sent:null,
+    partnersWritten,partnersCooperating,partnersDeclined,partnerConv:partnersWritten?partnersCooperating/partnersWritten:null};
 }
 function partnerComputed(p){
   const leadsSent=db.leads.filter(l=>l.partner===p.name && p.name).length;
@@ -495,39 +510,37 @@ function renderAll(){
 function renderDash(){
   const totalSent=db.outreach.reduce((s,o)=>s+(+o.sent||0),0);
   const totalReplied=db.outreach.reduce((s,o)=>s+(+o.replied||0),0);
-  const became=db.leads.filter(l=>l.status==='Стал клиентом').length;
   const totalClients=db.clients.length;
   const activeClients=db.clients.filter(c=>c.status==='В работе'||c.status==='Пауза').length;
   const cooperating=db.partners.filter(p=>p.status==='Сотрудничаем').length;
-  const conv=totalSent?became/totalSent:0;
   document.getElementById('dashCards').innerHTML=[
     card('Отправлено',totalSent, totalSent?('ответило '+totalReplied+' · '+pct(totalReplied/totalSent)):''),
-    card('Стали клиентом',became,'общая конв. '+pct(conv)),
-    card('Клиентов всего',totalClients,'активных '+activeClients),
+    card('Клиентов всего',totalClients, 'конв. '+(totalSent?pct(totalClients/totalSent):'—')),
+    card('Активно сейчас',activeClients,'в работе + пауза'),
     card('Партнёров сотрудничает',cooperating,'из '+db.partners.length),
   ].join('');
-  const rows=db.channels.map(ch=>{ const s=channelStats(ch); return {ch,s}; });
-  document.querySelector('#chanLeadTable tbody').innerHTML = rows.map(({ch,s})=>`
+  // лиды/клиенты — по справочнику клиентов
+  document.querySelector('#chanLeadTable tbody').innerHTML = db.channels.map(ch=>{ const s=channelStats(ch); return `
     <tr>
       <td><b>${esc(ch)}</b></td>
       <td class="num">${s.sent}</td>
-      <td class="num">${s.replied}</td>
-      <td>${convBar(s.replyConv)}</td>
       <td class="num">${s.agreed}</td>
+      <td>${convBar(s.agreedConv)}</td>
       <td class="num">${s.becameClient}</td>
       <td>${convBar(s.clientConv)}</td>
-    </tr>`).join('') || `<tr><td colspan="7" class="empty">Нет каналов</td></tr>`;
-  document.querySelector('#chanPartnerTable tbody').innerHTML = rows.map(({ch,s})=>`
+    </tr>`; }).join('') || `<tr><td colspan="6" class="empty">Нет каналов</td></tr>`;
+  // партнёры — по своему справочнику
+  document.querySelector('#chanPartnerTable tbody').innerHTML = db.partnerChannels.map(ch=>{ const s=channelStats(ch); return `
     <tr>
       <td><b>${esc(ch)}</b></td>
       <td class="num">${s.partnersWritten}</td>
       <td class="num">${s.partnersCooperating}</td>
       <td class="num">${s.partnersDeclined}</td>
       <td>${convBar(s.partnerConv)}</td>
-    </tr>`).join('') || `<tr><td colspan="5" class="empty">Нет каналов</td></tr>`;
+    </tr>`; }).join('') || `<tr><td colspan="5" class="empty">Нет каналов</td></tr>`;
 }
 function card(k,v,sub){ return `<div class="card"><div class="k">${esc(k)}</div><div class="v">${v}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>`; }
-function convBar(x){ return `<div class="bararea"><div class="mini"><i style="width:${Math.round(x*100)}%"></i></div><span class="muted">${pct(x)}</span></div>`; }
+function convBar(x){ if(x==null) return '<span class="muted">—</span>'; return `<div class="bararea"><div class="mini"><i style="width:${Math.round(x*100)}%"></i></div><span class="muted">${pct(x)}</span></div>`; }
 
 /* ---- Outreach (рассылки) ---- */
 function renderOutreach(){
@@ -665,7 +678,7 @@ function renderPartners(){
 
 /* ============================= МОДАЛКИ ============================= */
 let editKind=null, editId=null;
-function chanOptions(sel){ return db.channels.map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join(''); }
+function chanOptions(sel,list){ return (list||db.channels).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join(''); }
 function partnerOptions(sel){ return `<option value="">— нет —</option>`+db.partners.map(p=>`<option ${p.name===sel?'selected':''}>${esc(p.name)}</option>`).join(''); }
 function statusOptions(list,sel){ return list.map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join(''); }
 function field(label,inner,full){ return `<label class="f ${full?'full':''}"><span>${label}</span>${inner}</label>`; }
@@ -702,12 +715,12 @@ function openClient(id, prefill){
 }
 function openPartner(id){
   editKind='partner'; editId=id||null;
-  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.channels[0]||'',name:'',telegram:'',niche:'',status:'Надо написать',comment:''};
+  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.partnerChannels[0]||'',name:'',telegram:'',niche:'',status:'Надо написать',comment:''};
   document.getElementById('mTitle').textContent = id?'Партнёр':'Новый партнёр';
   document.getElementById('mBody').innerHTML =
     field('Дата старта',`<input type="date" id="f_start" value="${esc(p.startDate)}">`)+
     field('Дата финиша',`<input type="date" id="f_end" value="${esc(p.endDate)}">`)+
-    field('Канал (источник)',`<select id="f_source">${chanOptions(p.source)}</select>`)+
+    field('Канал (источник)',`<select id="f_source">${chanOptions(p.source,db.partnerChannels)}</select>`)+
     field('Статус',`<select id="f_status">${statusOptions(PARTNER_STATUSES,p.status)}</select>`)+
     field('Имя',`<input id="f_name" value="${esc(p.name)}">`)+
     field('Telegram',`<input id="f_tg" value="${esc(p.telegram)}" placeholder="@username">`)+
@@ -773,34 +786,45 @@ function deleteCurrent(){
   if(editKind==='outreach') db.outreach=db.outreach.filter(x=>x.id!==editId);
   saveLocal(); renderAll(); closeModal();
 }
-/* ============================= КАНАЛЫ ============================= */
+/* ============================= КАНАЛЫ (два справочника) ============================= */
 function renderChannelChips(){
-  document.getElementById('chanChips').innerHTML = db.channels.map((c,i)=>
-    `<span class="chan-chip">${esc(c)}<button title="Переименовать" style="color:var(--muted)" onclick="renameChannel(${i})">✎</button><button title="Удалить" onclick="removeChannel(${i})">×</button></span>`).join('') || '<span class="muted">Нет каналов</span>';
+  chipsInto('chanChips','channels');
+  chipsInto('partnerChanChips','partnerChannels');
 }
-function renameChannel(i){
-  const old=db.channels[i];
+function chipsInto(elId, which){
+  document.getElementById(elId).innerHTML = db[which].map((c,i)=>
+    `<span class="chan-chip">${esc(c)}<button title="Переименовать" style="color:var(--muted)" onclick="renameChannel('${which}',${i})">✎</button><button title="Удалить" onclick="removeChannel('${which}',${i})">×</button></span>`).join('') || '<span class="muted">Нет каналов</span>';
+}
+function channelRefsUpdate(which, old, nv){
+  if(which==='channels'){
+    db.outreach.forEach(o=>{ if(o.channel===old) o.channel=nv; });
+    db.leads.forEach(l=>{ if(l.channel===old) l.channel=nv; });
+    db.clients.forEach(c=>{ if(c.source===old) c.source=nv; });
+  } else {
+    db.partners.forEach(p=>{ if(p.source===old) p.source=nv; });
+  }
+}
+function channelUsed(which, ch){
+  if(which==='channels') return db.outreach.some(o=>o.channel===ch)||db.leads.some(l=>l.channel===ch)||db.clients.some(c=>c.source===ch);
+  return db.partners.some(p=>p.source===ch);
+}
+function renameChannel(which,i){
+  const list=db[which]; const old=list[i];
   const nv=(prompt('Новое название канала:',old)||'').trim();
   if(!nv||nv===old) return;
-  if(db.channels.includes(nv)){ toast('Такой канал уже есть'); return; }
-  db.channels[i]=nv;
-  // обновляем ссылки во всех записях
-  db.outreach.forEach(o=>{ if(o.channel===old) o.channel=nv; });
-  db.leads.forEach(l=>{ if(l.channel===old) l.channel=nv; });
-  db.clients.forEach(c=>{ if(c.source===old) c.source=nv; });
-  db.partners.forEach(p=>{ if(p.source===old) p.source=nv; });
+  if(list.includes(nv)){ toast('Такой канал уже есть'); return; }
+  list[i]=nv; channelRefsUpdate(which,old,nv);
   saveLocal(); renderAll(); toast('Канал переименован');
 }
-function addChannel(){
-  const el=document.getElementById('newChan'); const v=el.value.trim();
-  if(!v) return; if(db.channels.includes(v)){ toast('Такой канал уже есть'); return; }
-  db.channels.push(v); el.value=''; saveLocal(); renderChannelChips(); refreshChannelSelects(); renderDash();
+function addChannel(which,inputId){
+  const el=document.getElementById(inputId); const v=el.value.trim();
+  if(!v) return; if(db[which].includes(v)){ toast('Такой канал уже есть'); return; }
+  db[which].push(v); el.value=''; saveLocal(); renderAll();
 }
-function removeChannel(i){
-  const ch=db.channels[i];
-  const used = db.outreach.some(o=>o.channel===ch)||db.leads.some(l=>l.channel===ch)||db.clients.some(c=>c.source===ch)||db.partners.some(p=>p.source===ch);
-  if(used && !confirm(`Канал «${ch}» используется в записях. Всё равно удалить из справочника? Записи не изменятся.`)) return;
-  db.channels.splice(i,1); saveLocal(); renderChannelChips(); refreshChannelSelects(); renderDash();
+function removeChannel(which,i){
+  const ch=db[which][i];
+  if(channelUsed(which,ch) && !confirm(`Канал «${ch}» используется в записях. Всё равно удалить из справочника? Записи не изменятся.`)) return;
+  db[which].splice(i,1); saveLocal(); renderAll();
 }
 function refreshChannelSelects(){
   fillSelect('outreachChanFilter','Все каналы');
@@ -814,13 +838,12 @@ function fillSelect(id,allLabel){
 
 /* ============================= ГРАФИКИ (SVG) ============================= */
 function renderCharts(){
-  // Воронка: Написал/Ответило — из рассылок, Согласился/Клиент — из карточек лидов
+  // Воронка: Написал — из рассылок, Согласился — из лидов, Клиент — из карточек клиентов
   const sent=db.outreach.reduce((s,o)=>s+(+o.sent||0),0);
-  const replied=db.outreach.reduce((s,o)=>s+(+o.replied||0),0);
   const agreed=db.leads.filter(l=>AGREED_SET.has(l.status)).length;
-  const became=db.leads.filter(l=>l.status==='Стал клиентом').length;
+  const became=db.clients.length;
   document.getElementById('chartFunnel').innerHTML = funnelSVG([
-    ['Написал',sent,'#3b5bdb'],['Ответило',replied,'#4c6ef5'],['Согласился',agreed,'#748ffc'],['Стал клиентом',became,'#2f9e44']
+    ['Написал',sent,'#3b5bdb'],['Согласился',agreed,'#748ffc'],['Стал клиентом',became,'#2f9e44']
   ]);
   // Лиды по каналам
   const chLeads=db.channels.map(ch=>[ch,db.leads.filter(l=>l.channel===ch).length]).filter(x=>x[1]>0);
