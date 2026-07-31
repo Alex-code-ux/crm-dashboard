@@ -123,8 +123,8 @@
           <thead><tr>
             <th>Канал</th>
             <th class="num">Написал</th>
+            <th class="num">Лидов</th>
             <th class="num">Согласилось</th>
-            <th>Конв. в согласие</th>
             <th class="num">Стали клиентом</th>
             <th>Конв. в клиента</th>
           </tr></thead>
@@ -476,14 +476,17 @@ function channelStats(ch){
   const sent=out.reduce((s,o)=>s+(+o.sent||0),0);
   const replied=out.reduce((s,o)=>s+(+o.replied||0),0);
   const leads=db.leads.filter(l=>l.channel===ch);
+  const leadsCount=leads.length;
   const agreed=leads.filter(l=>AGREED_SET.has(l.status)).length;
   const becameClient=db.clients.filter(c=>c.source===ch).length; // из реальных карточек клиентов
+  // база конверсии: рассылочные каналы — от «написал», входящие (без рассылок) — от числа лидов
+  const base = sent>0 ? sent : Math.max(leadsCount, becameClient);
   const partners=db.partners.filter(p=>p.source===ch);
   const partnersWritten=partners.length;
   const partnersCooperating=partners.filter(p=>p.status==='Сотрудничаем').length;
   const partnersDeclined=partners.filter(p=>p.status==='Не сотрудничаем').length;
-  return {sent,replied,replyConv:sent?replied/sent:null,agreed,agreedConv:sent?agreed/sent:null,
-    becameClient,clientConv:sent?becameClient/sent:null,
+  return {sent,replied,leadsCount,agreed,becameClient,
+    clientConv: base?becameClient/base:null,
     partnersWritten,partnersCooperating,partnersDeclined,partnerConv:partnersWritten?partnersCooperating/partnersWritten:null};
 }
 function partnerComputed(p){
@@ -524,8 +527,8 @@ function renderDash(){
     <tr>
       <td><b>${esc(ch)}</b></td>
       <td class="num">${s.sent}</td>
+      <td class="num">${s.leadsCount}</td>
       <td class="num">${s.agreed}</td>
-      <td>${convBar(s.agreedConv)}</td>
       <td class="num">${s.becameClient}</td>
       <td>${convBar(s.clientConv)}</td>
     </tr>`; }).join('') || `<tr><td colspan="6" class="empty">Нет каналов</td></tr>`;
