@@ -72,9 +72,10 @@
   .modal .m-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
   label.f{display:block} label.f > span{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px}
   .x{border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
-  .charts{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  @media(max-width:900px){.charts{grid-template-columns:1fr}.modal .m-body{grid-template-columns:1fr}}
+  .charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+  @media(max-width:720px){.charts{grid-template-columns:1fr}.modal .m-body{grid-template-columns:1fr}}
   .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+  .chartbox svg{max-height:210px;display:block}
   .chartbox h3{margin:0 0 10px;font-size:14px}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
