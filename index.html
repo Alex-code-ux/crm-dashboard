@@ -72,6 +72,8 @@
   .modal .m-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
   label.f{display:block} label.f > span{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px}
   .x{border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  @media(max-width:760px){.cols2{grid-template-columns:1fr}}
   .charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
   @media(max-width:720px){.charts{grid-template-columns:1fr}.modal .m-body{grid-template-columns:1fr}}
   .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
@@ -153,19 +155,26 @@
   <!-- OUTREACH (рассылки) -->
   <section class="view" id="view-outreach">
     <div class="cards" id="outreachCards"></div>
-    <div class="toolbar">
-      <button class="btn primary" onclick="openOutreach()">+ Рассылка</button>
-      <select id="outreachChanFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
-      <span class="hint" style="align-self:center">Заноси сюда холодные рассылки пачками. Поимённо в «Лиды» — только тех, кто ответил.</span>
-    </div>
-    <div class="panel">
-      <div class="tablewrap">
-        <table id="outreachTable">
-          <thead><tr>
-            <th>Дата</th><th>Площадка</th><th class="num">Отправлено</th><th>Комментарий</th><th></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
+    <div class="cols2">
+      <div class="panel">
+        <div class="head">Рассылки клиентам — пишу напрямую
+          <button class="btn sm primary" style="margin-left:auto" onclick="openOutreach(null,'client')">+ Рассылка</button></div>
+        <div class="tablewrap">
+          <table id="outreachClientTable">
+            <thead><tr><th>Дата</th><th>Канал</th><th class="num">Отправлено</th><th>Коммент.</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="head">Рассылки партнёрам — предлагаю сотрудничество
+          <button class="btn sm primary" style="margin-left:auto" onclick="openOutreach(null,'partner')">+ Рассылка</button></div>
+        <div class="tablewrap">
+          <table id="outreachPartnerTable">
+            <thead><tr><th>Дата</th><th>Канал</th><th class="num">Отправлено</th><th>Коммент.</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>
@@ -236,6 +245,8 @@
   <section class="view active" id="view-charts">
     <div class="charts">
       <div class="chartbox"><h3>Воронка <span class="muted" id="funnelScope" style="font-weight:400;font-size:12px"></span></h3><div id="chartFunnel"></div></div>
+      <div class="chartbox"><h3>Рассылки по дням недели <span class="muted" id="weekdayScope" style="font-weight:400;font-size:12px"></span></h3><div id="chartWeekday"></div></div>
+      <div class="chartbox"><h3>Рассылки по месяцам</h3><div id="chartOutreachMonths"></div></div>
       <div class="chartbox"><h3>Лиды по каналам</h3><div id="chartChanLeads"></div></div>
       <div class="chartbox"><h3>ЛИДы по статусам — текущий месяц</h3><div id="chartLeadStatusMonth"></div></div>
       <div class="chartbox"><h3>ЛИДы по статусам — всё время</h3><div id="chartLeadStatusAll"></div></div>
@@ -470,7 +481,7 @@ function normalize(parsed){
   const d=blankDB();
   if(Array.isArray(parsed.channels)&&parsed.channels.length) d.channels=parsed.channels;
   d.partnerChannels=(Array.isArray(parsed.partnerChannels)&&parsed.partnerChannels.length)?parsed.partnerChannels:[...d.channels];
-  d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,comment:x.comment||''}));
+  d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),audience:(x.audience==='partner'?'partner':'client'),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,comment:x.comment||''}));
   d.leads=(parsed.leads||[]).map(x=>{ let st=x.status||'Написал'; st=LEAD_STATUS_MIGRATE[st]||st; if(!LEAD_STATUSES.includes(st)) st='Написал'; return {id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}; });
   d.clients=(parsed.clients||[]).map(x=>{ let st=x.status||'В работе'; st=CLIENT_STATUS_MIGRATE[st]||st; if(!CLIENT_STATUSES.includes(st)) st='В работе'; return {id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||''}; });
   d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Сотрудничаем'?'Сотрудничаем':'Не сотрудничаем'),comment:x.comment||''}));
@@ -481,19 +492,18 @@ function normalize(parsed){
 /* ============================= ВЫЧИСЛЕНИЯ ============================= */
 function channelStats(ch){
   // всё с учётом выбранного периода (по дате события)
-  const sent=db.outreach.filter(o=>o.channel===ch && inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
+  const sent=db.outreach.filter(o=>o.audience!=='partner' && o.channel===ch && inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
   const leadsCount=db.leads.filter(l=>l.channel===ch && inPeriod(l.dateContacted)).length;
   const becameClient=db.clients.filter(c=>c.source===ch && inPeriod(c.startDate)).length;
-  // партнёры: «Написал» = всего контактов, «Партнёров» = сотрудничаем
-  const partners=db.partners.filter(p=>p.source===ch && inPeriod(p.startDate));
-  const partnerWritten=partners.length;
-  const partnerCount=partners.filter(p=>p.status==='Сотрудничаем').length;
+  // партнёры: «Написал» = рассылки партнёрам, «Партнёров» = сотрудничаем
+  const partnerSent=db.outreach.filter(o=>o.audience==='partner' && o.channel===ch && inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
+  const partnerCount=db.partners.filter(p=>p.source===ch && p.status==='Сотрудничаем' && inPeriod(p.startDate)).length;
   return {
     sent, leadsCount, becameClient,
     leadConv: sent>0 ? leadsCount/sent : null,        // Написал → ЛИДы
     clientConv: leadsCount>0 ? becameClient/leadsCount : null, // ЛИДы → Клиенты
-    partnerWritten, partnerCount,
-    partnerConv: partnerWritten>0 ? partnerCount/partnerWritten : null
+    partnerSent, partnerCount,
+    partnerConv: partnerSent>0 ? partnerCount/partnerSent : null
   };
 }
 function partnerComputed(p){
@@ -530,7 +540,7 @@ function refreshPeriodSelect(){
 
 /* ---- Dashboard ---- */
 function renderDash(){
-  const totalSent=db.outreach.filter(o=>inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
+  const totalSent=db.outreach.filter(o=>o.audience!=='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
   const totalLeads=db.leads.filter(l=>inPeriod(l.dateContacted)).length;
   const totalClients=db.clients.filter(c=>inPeriod(c.startDate)).length;
   const cooperating=db.partners.filter(p=>p.status==='Сотрудничаем'&&inPeriod(p.startDate)).length;
@@ -554,7 +564,7 @@ function renderDash(){
   document.querySelector('#chanPartnerTable tbody').innerHTML = db.partnerChannels.map(ch=>{ const s=channelStats(ch); return `
     <tr>
       <td><b>${esc(ch)}</b></td>
-      <td class="num">${s.partnerWritten}</td>
+      <td class="num">${s.partnerSent}</td>
       <td>${convBar(s.partnerConv)}</td>
       <td class="num">${s.partnerCount}</td>
     </tr>`; }).join('') || `<tr><td colspan="4" class="empty">Нет каналов</td></tr>`;
@@ -566,22 +576,26 @@ function convBar(x){ if(x==null) return '<span class="muted">—</span>'; return
 function renderOutreach(){
   const weekAgo=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
   const week=db.outreach.filter(o=>(o.date||'')>=weekAgo).reduce((s,o)=>s+(+o.sent||0),0);
-  const periodSent=db.outreach.filter(o=>inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
+  const clientSent=db.outreach.filter(o=>o.audience!=='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
+  const partnerSent=db.outreach.filter(o=>o.audience==='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
   document.getElementById('outreachCards').innerHTML=[
     card('Отправлено за неделю',week),
-    card('Отправлено'+(currentPeriod?' ('+currentPeriod+')':' всего'),periodSent),
+    card('Клиентам'+(currentPeriod?' ('+currentPeriod+')':''),clientSent),
+    card('Партнёрам'+(currentPeriod?' ('+currentPeriod+')':''),partnerSent),
   ].join('');
-  const cf=document.getElementById('outreachChanFilter').value;
-  const rows=db.outreach.filter(o=>(!cf||o.channel===cf)&&inPeriod(o.date)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  document.querySelector('#outreachTable tbody').innerHTML = rows.map(o=>{
-    return `<tr style="cursor:pointer" onclick="openOutreach('${o.id}')">
+  outreachTableInto('outreachClientTable','client');
+  outreachTableInto('outreachPartnerTable','partner');
+}
+function outreachTableInto(tableId, audience){
+  const rows=db.outreach.filter(o=>(audience==='partner'?o.audience==='partner':o.audience!=='partner') && inPeriod(o.date)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  document.querySelector('#'+tableId+' tbody').innerHTML = rows.map(o=>`
+    <tr style="cursor:pointer" onclick="openOutreach('${o.id}')">
       <td>${esc(o.date||'—')}</td>
       <td><b>${esc(o.channel||'—')}</b></td>
       <td class="num">${o.sent}</td>
       <td class="muted">${esc((o.comment||'').slice(0,50))}</td>
       <td></td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="5" class="empty">Рассылок пока нет. Нажми «+ Рассылка».</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="5" class="empty">Пока нет. Нажми «+ Рассылка».</td></tr>`;
 }
 
 /* ---- Leads ---- */
@@ -740,13 +754,17 @@ function openPartner(id){
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(p.comment)}</textarea>`,true);
   showModal(!!id);
 }
-function openOutreach(id){
+let outreachAudience='client';
+function openOutreach(id, audience){
   editKind='outreach'; editId=id||null;
-  const o = id ? db.outreach.find(x=>x.id===id) : {date:today(),channel:db.channels[0]||'',sent:'',comment:''};
-  document.getElementById('mTitle').textContent = id?'Рассылка':'Новая рассылка';
+  const aud = id ? (db.outreach.find(x=>x.id===id)||{}).audience||'client' : (audience||'client');
+  outreachAudience=aud;
+  const list = aud==='partner'?db.partnerChannels:db.channels;
+  const o = id ? db.outreach.find(x=>x.id===id) : {date:today(),channel:list[0]||'',sent:'',comment:''};
+  document.getElementById('mTitle').textContent = (id?'Рассылка':'Новая рассылка')+(aud==='partner'?' партнёрам':' клиентам');
   document.getElementById('mBody').innerHTML =
     field('Дата',`<input type="date" id="f_date" value="${esc(o.date)}">`)+
-    field('Площадка',`<select id="f_channel">${chanOptions(o.channel)}</select>`)+
+    field('Канал',`<select id="f_channel">${chanOptions(o.channel,list)}</select>`)+
     field('Отправлено (кол-во сообщений)',`<input type="number" min="0" id="f_sent" value="${esc(o.sent)}">`,true)+
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(o.comment)}</textarea>`,true);
   showModal(!!id);
@@ -783,7 +801,7 @@ function saveModal(){
     applyAutoEnd(rec,PARTNER_TERMINAL);
     upsert(db.partners,rec);
   } else if(editKind==='outreach'){
-    const rec={id:editId||uid(),date:val('f_date'),channel:val('f_channel'),sent:Math.max(0,parseInt(val('f_sent'),10)||0),comment:val('f_comment')};
+    const rec={id:editId||uid(),audience:outreachAudience,date:val('f_date'),channel:val('f_channel'),sent:Math.max(0,parseInt(val('f_sent'),10)||0),comment:val('f_comment')};
     upsert(db.outreach,rec);
   }
   saveLocal(); renderAll(); closeModal();
@@ -838,7 +856,6 @@ function removeChannel(which,i){
   db[which].splice(i,1); saveLocal(); renderAll();
 }
 function refreshChannelSelects(){
-  fillSelect('outreachChanFilter','Все каналы');
   fillSelect('leadChanFilter','Все каналы');
   fillSelect('clientSourceFilter','Все каналы');
 }
@@ -850,13 +867,22 @@ function fillSelect(id,allLabel){
 /* ============================= ГРАФИКИ (SVG) ============================= */
 function renderCharts(){
   document.getElementById('funnelScope').textContent = currentPeriod?('· '+currentPeriod):'· всё время';
-  // Воронка (учитывает период): Написал → ЛИДы → Клиенты
-  const sent=db.outreach.filter(o=>inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
+  // Воронка (учитывает период): Написал → ЛИДы → Клиенты (клиентские рассылки)
+  const sent=db.outreach.filter(o=>o.audience!=='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
   const leadsN=db.leads.filter(l=>inPeriod(l.dateContacted)).length;
   const became=db.clients.filter(c=>inPeriod(c.startDate)).length;
   document.getElementById('chartFunnel').innerHTML = funnelSVG([
     ['Написал',sent,'#3b5bdb'],['ЛИДы',leadsN,'#748ffc'],['Стал клиентом',became,'#2f9e44']
   ]);
+  // Рассылки по дням недели (учитывает период)
+  document.getElementById('weekdayScope').textContent = currentPeriod?('· '+currentPeriod):'· всё время';
+  const WD=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const wsum=[0,0,0,0,0,0,0];
+  db.outreach.filter(o=>inPeriod(o.date)).forEach(o=>{ const d=new Date((o.date||'')+'T00:00:00'); if(!isNaN(d)) wsum[(d.getDay()+6)%7]+=(+o.sent||0); });
+  document.getElementById('chartWeekday').innerHTML = wsum.some(v=>v>0) ? hbarSVG(WD.map((w,i)=>[w,wsum[i]]),false,true) : emptyChart();
+  // Рассылки по месяцам (всё время)
+  const om={}; db.outreach.forEach(o=>{ const k=ym(o.date); if(k) om[k]=(om[k]||0)+(+o.sent||0); });
+  const omRows=Object.keys(om).sort().map(k=>[k,om[k]]);
+  document.getElementById('chartOutreachMonths').innerHTML = omRows.length ? hbarSVG(omRows,false,true) : emptyChart();
   // Лиды по каналам (период)
   const chLeads=db.channels.map(ch=>[ch,db.leads.filter(l=>l.channel===ch && inPeriod(l.dateContacted)).length]).filter(x=>x[1]>0);
   document.getElementById('chartChanLeads').innerHTML = hbarSVG(chLeads,false) || emptyChart();
@@ -883,9 +909,9 @@ function funnelSVG(rows){
   });
   return svg+'</svg>';
 }
-function hbarSVG(rows,isPct){
+function hbarSVG(rows,isPct,keepOrder){
   if(!rows.length) return '';
-  rows=rows.slice().sort((a,b)=>b[1]-a[1]);
+  rows=rows.slice(); if(!keepOrder) rows.sort((a,b)=>b[1]-a[1]);
   const max=isPct?1:Math.max(1,...rows.map(r=>r[1]));
   const W=420,rh=30,gap=8,labelW=150; const H=rows.length*(rh+gap);
   let y=0,svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
@@ -919,7 +945,7 @@ function donutSVG(rows,colors,unit){
 function monthlySVG(){
   const map={}; // ym -> {sent, became, clients}
   const bump=(ym,k,n)=>{ if(!ym||!n) return; (map[ym]=map[ym]||{sent:0,became:0,clients:0})[k]+=n; };
-  db.outreach.forEach(o=>{ bump((o.date||'').slice(0,7),'sent',+o.sent||0); });
+  db.outreach.forEach(o=>{ if(o.audience!=='partner') bump((o.date||'').slice(0,7),'sent',+o.sent||0); });
   db.leads.forEach(l=>{ if(l.status==='Стал клиентом') bump((l.dateContacted||'').slice(0,7),'became',1); });
   db.clients.forEach(c=>{ bump((c.startDate||'').slice(0,7),'clients',1); });
   const keys=Object.keys(map).sort();
@@ -947,7 +973,6 @@ document.getElementById('nav').addEventListener('click',e=>{
   if(b.dataset.view==='charts') renderCharts();
 });
 document.getElementById('periodSel').addEventListener('change',e=>{ currentPeriod=e.target.value; renderAll(); });
-document.getElementById('outreachChanFilter').addEventListener('input',renderOutreach);
 ['leadSearch','leadStatusFilter','leadChanFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderLeads));
 ['clientSearch','clientStatusFilter','clientSourceFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderClients));
 ['partnerSearch','partnerStatusFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderPartners));
