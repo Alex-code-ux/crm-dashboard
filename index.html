@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CRM — Клиенты и каналы</title>
+<title>CRM – Клиенты и каналы</title>
 <style>
   :root{
     --bg:#f4f6fb; --panel:#ffffff; --ink:#1f2430; --muted:#6b7280; --line:#e5e8f0;
@@ -16,6 +16,9 @@
   body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
   .bar{display:flex;align-items:center;gap:14px;padding:10px 18px;max-width:1400px;margin:0 auto}
+  .gear{border:1px solid var(--line);background:var(--panel);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:17px;line-height:1;color:var(--muted)}
+  .gear:hover{border-color:#c9d0e0;color:var(--ink)}
+  .gear.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft)}
   .logo{font-weight:700;font-size:16px;letter-spacing:.2px}
   .logo b{color:var(--accent)}
   nav{display:flex;gap:4px;flex-wrap:wrap}
@@ -54,6 +57,9 @@
   th{background:#fafbff;color:var(--muted);font-weight:700;font-size:12px}
   tbody tr:hover{background:#fbfcff}
   th.num,td.num{text-align:center;font-variant-numeric:tabular-nums}
+  table.sortable th{cursor:pointer;user-select:none}
+  table.sortable th:hover{color:var(--accent)}
+  table.sortable th .car{font-size:9px;margin-left:3px;color:var(--accent)}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid transparent}
   .rowact{display:flex;gap:6px}
   .muted{color:var(--muted)}
@@ -72,8 +78,18 @@
   .modal .m-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
   label.f{display:block} label.f > span{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px}
   .x{border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
-  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .totals{display:flex;flex-direction:column;gap:2px;justify-content:center}
+  .totals .row{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding:7px 2px}
+  .totals .row span{color:var(--muted)} .totals .row b{font-size:16px;font-variant-numeric:tabular-nums}
+  .totals .wk{padding-left:12px;font-size:12px}
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
   @media(max-width:760px){.cols2{grid-template-columns:1fr}}
+  .floatchart{position:fixed;top:62px;right:16px;width:380px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 50px rgba(20,30,60,.28);padding:12px 14px;z-index:40;display:none}
+  .floatchart.open{display:block}
+  .floatchart .fc-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:stretch}
+  @media(max-width:1000px){.row4{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.row4{grid-template-columns:1fr}}
   .charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
   @media(max-width:720px){.charts{grid-template-columns:1fr}.modal .m-body{grid-template-columns:1fr}}
   .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
@@ -95,15 +111,15 @@
 <body>
 <header>
   <div class="bar">
+    <button class="gear" id="btnSettings" title="Настройки">⚙</button>
     <div class="logo">CRM <b>·</b> Клиенты и каналы</div>
     <nav id="nav">
-      <button data-view="charts" class="active">Графики</button>
-      <button data-view="dash">Каналы</button>
+      <button data-view="dash" class="active">Каналы</button>
       <button data-view="outreach">Рассылки</button>
       <button data-view="leads">Лиды</button>
       <button data-view="clients">Клиенты</button>
       <button data-view="partners">Партнёры</button>
-      <button data-view="settings">Настройки</button>
+      <button data-view="charts">Графики</button>
     </nav>
     <div class="spacer"></div>
     <select id="periodSel" title="Период" style="width:auto;min-width:150px"></select>
@@ -119,32 +135,36 @@
 <main>
   <!-- DASHBOARD: CHANNELS -->
   <section class="view" id="view-dash">
-    <div class="cards" id="dashCards"></div>
+    <div class="charts">
+      <div class="chartbox"><h3>Лиды по каналам</h3><div id="pieLeadsChan"></div></div>
+      <div class="chartbox"><h3>Клиенты по каналам</h3><div id="pieClientsChan"></div></div>
+      <div class="chartbox"><h3>Партнёры по каналам</h3><div id="piePartnersChan"></div></div>
+    </div>
     <div class="panel">
-      <div class="head">Каналы — лиды и клиенты</div>
+      <div class="head">Клиенты</div>
       <div class="tablewrap">
-        <table id="chanLeadTable">
+        <table id="chanLeadTable" class="sortable">
           <thead><tr>
-            <th>Канал</th>
-            <th class="num">Написал</th>
-            <th>Конв. в ЛИДы</th>
-            <th class="num">ЛИДы</th>
-            <th>Конв. в клиенты</th>
-            <th class="num">Стали клиентами</th>
+            <th data-k="ch">Канал</th>
+            <th class="num" data-k="sent">Написал</th>
+            <th data-k="leadConv">Конв. в ЛИДы</th>
+            <th class="num" data-k="leadsCount">ЛИДы</th>
+            <th data-k="clientConv">Конв. в клиенты</th>
+            <th class="num" data-k="becameClient">Стали клиентами</th>
           </tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>
     <div class="panel">
-      <div class="head">Каналы — партнёры</div>
+      <div class="head">Партнёры</div>
       <div class="tablewrap">
-        <table id="chanPartnerTable">
+        <table id="chanPartnerTable" class="sortable">
           <thead><tr>
-            <th>Канал</th>
-            <th class="num">Написал</th>
-            <th>Конв. в партнёра</th>
-            <th class="num">Партнёров</th>
+            <th data-k="ch">Канал</th>
+            <th class="num" data-k="partnerSent">Написал</th>
+            <th data-k="partnerConv">Конв. в партнёра</th>
+            <th class="num" data-k="partnerCount">Стали партнёрами</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -154,10 +174,15 @@
 
   <!-- OUTREACH (рассылки) -->
   <section class="view" id="view-outreach">
-    <div class="cards" id="outreachCards"></div>
+    <div class="row4">
+      <div class="chartbox"><h3>По дням недели <span class="muted" style="font-weight:400;font-size:11px">клиенты/партнёры</span></h3><div id="chartWeekday"></div></div>
+      <div class="chartbox"><h3>Накопительно по неделям</h3><div id="chartCumWeek"></div></div>
+      <div class="chartbox"><h3>Воронка клиентов <span class="muted" id="cfunScope" style="font-weight:400;font-size:11px"></span></h3><div id="funnelClient"></div></div>
+      <div class="chartbox"><h3>Воронка партнёров <span class="muted" id="pfunScope" style="font-weight:400;font-size:11px"></span></h3><div id="funnelPartner"></div></div>
+    </div>
     <div class="cols2">
       <div class="panel">
-        <div class="head">Рассылки клиентам — пишу напрямую
+        <div class="head">Рассылки клиентам – пишу напрямую
           <button class="btn sm primary" style="margin-left:auto" onclick="openOutreach(null,'client')">+ Рассылка</button></div>
         <div class="tablewrap">
           <table id="outreachClientTable">
@@ -167,7 +192,7 @@
         </div>
       </div>
       <div class="panel">
-        <div class="head">Рассылки партнёрам — предлагаю сотрудничество
+        <div class="head">Рассылки партнёрам – предлагаю сотрудничество
           <button class="btn sm primary" style="margin-left:auto" onclick="openOutreach(null,'partner')">+ Рассылка</button></div>
         <div class="tablewrap">
           <table id="outreachPartnerTable">
@@ -186,6 +211,11 @@
       <input type="search" id="leadSearch" placeholder="Поиск по имени / телеграму / комментарию…">
       <select id="leadStatusFilter" style="width:auto;min-width:180px"><option value="">Все статусы</option></select>
       <select id="leadChanFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
+      <button class="btn" id="leadChartBtn" style="margin-left:auto" onclick="toggleLeadChart()">График</button>
+    </div>
+    <div class="floatchart" id="leadChartWrap">
+      <div class="fc-head"><b>ЛИДы по статусам</b> <span class="muted" id="leadPieScope" style="font-weight:400;font-size:12px"></span><button class="x" style="margin-left:auto" onclick="toggleLeadChart()">×</button></div>
+      <div id="chartLeadStatus"></div>
     </div>
     <div class="panel">
       <div class="tablewrap">
@@ -242,16 +272,19 @@
   </section>
 
   <!-- CHARTS -->
-  <section class="view active" id="view-charts">
-    <div class="charts">
-      <div class="chartbox"><h3>Воронка <span class="muted" id="funnelScope" style="font-weight:400;font-size:12px"></span></h3><div id="chartFunnel"></div></div>
-      <div class="chartbox"><h3>Рассылки по дням недели <span class="muted" id="weekdayScope" style="font-weight:400;font-size:12px"></span></h3><div id="chartWeekday"></div></div>
-      <div class="chartbox"><h3>Рассылки по месяцам</h3><div id="chartOutreachMonths"></div></div>
-      <div class="chartbox"><h3>Лиды по каналам</h3><div id="chartChanLeads"></div></div>
-      <div class="chartbox"><h3>ЛИДы по статусам — текущий месяц</h3><div id="chartLeadStatusMonth"></div></div>
-      <div class="chartbox"><h3>ЛИДы по статусам — всё время</h3><div id="chartLeadStatusAll"></div></div>
-      <div class="chartbox"><h3>Динамика по месяцам</h3><div id="chartMonthly"></div>
-        <div class="legend"><span><i style="background:#3b5bdb"></i>Отправлено</span><span><i style="background:#2f9e44"></i>Стали клиентом</span><span><i style="background:#e8590c"></i>Стартовало клиентов</span></div>
+  <section class="view" id="view-charts">
+    <div class="panel">
+      <div class="head">Динамика <span class="muted" id="dynScope" style="font-weight:400;font-size:12px"></span>
+        <span style="margin-left:auto;display:flex;gap:4px" id="dynGranBtns">
+          <button class="btn sm" data-g="day">По дням</button>
+          <button class="btn sm" data-g="week">По неделям</button>
+          <button class="btn sm primary" data-g="month">По месяцам</button>
+        </span>
+        <button class="btn sm" id="dynCumBtn" style="margin-left:8px" onclick="toggleCum()">Накопительно</button>
+      </div>
+      <div style="padding:14px">
+        <div id="chartMonthly"></div>
+        <div class="legend"><span><i style="background:#3b5bdb"></i>Отправлено</span><span><i style="background:#748ffc"></i>Лиды</span><span><i style="background:#2f9e44"></i>Клиенты</span><span><i style="background:#e8590c"></i>Партнёры</span></div>
       </div>
     </div>
   </section>
@@ -299,7 +332,7 @@
           <input id="newPartnerChan" placeholder="Новый канал…">
           <button class="btn" onclick="addChannel('partnerChannels','newPartnerChan')">Добавить</button>
         </div>
-        <div class="hint">Отдельный список — используются только в «Партнёрах».</div>
+        <div class="hint">Отдельный список – используются только в «Партнёрах».</div>
       </div>
     </div>
 
@@ -337,20 +370,21 @@
 /* ============================= МОДЕЛЬ ============================= */
 const LEAD_STATUSES = ["Написал","Не ответил","Отказался","Стал клиентом"];
 const CLIENT_STATUSES = ["В работе","Завершён","Отменён"];
-const PARTNER_STATUSES = ["Не сотрудничаем","Сотрудничаем"];
-// конечные статусы — при переходе в них дата финиша ставится автоматически
+const PARTNER_STATUSES = ["Прервали","Сотрудничаем"];
+// конечные статусы – при переходе в них дата финиша ставится автоматически
 const CLIENT_TERMINAL = new Set(["Завершён","Отменён"]);
-const PARTNER_TERMINAL = new Set(["Не сотрудничаем"]);
+const PARTNER_TERMINAL = new Set(["Прервали"]);
 // миграция удалённых статусов
 const LEAD_STATUS_MIGRATE = {"Согласился":"Написал","Отвалился после согласия":"Отказался"};
 const CLIENT_STATUS_MIGRATE = {"Пауза":"В работе"};
+const PARTNER_STATUS_MIGRATE = {"Не сотрудничаем":"Прервали","Надо написать":"Прервали"};
 const CLIENT_COLORS = {"В работе":"var(--st-work)","Завершён":"var(--st-done)","Отменён":"var(--st-cancel)"};
 const LEAD_PILL = {
   "Написал":["#334","#eef1f8"],"Не ответил":["#8a6d0b","#fff3cd"],"Отказался":["#b02a2a","#f8d7da"],"Стал клиентом":["#fff","#3b5bdb"]
 };
 const LEAD_STATUS_COLORS = {"Написал":"#5b8def","Не ответил":"#e6b800","Отказался":"#e05151","Стал клиентом":"#2f9e44"};
 const PARTNER_PILL = {
-  "Не сотрудничаем":["#b02a2a","#f8d7da"],"Сотрудничаем":["#1b6b2b","#d7f0dc"]
+  "Прервали":["#b02a2a","#f8d7da"],"Сотрудничаем":["#1b6b2b","#d7f0dc"]
 };
 const DEFAULT_CHANNELS = ["Авито","Профи.ру","Личные контакты","Партнерский канал","Свои соцсети/Telegram","Рефералы от клиентов"];
 
@@ -359,6 +393,10 @@ let currentPeriod = ''; // '' = всё время, иначе 'YYYY-MM'
 function ym(d){ return (d||'').slice(0,7); }
 function thisMonth(){ return today().slice(0,7); }
 function inPeriod(d){ return currentPeriod==='' || ym(d)===currentPeriod; }
+function d2s(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function mondayOf(dateStr){ const x=new Date(dateStr+'T00:00:00'); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
+function prevMonthStr(m){ const p=m.split('-').map(Number); const d=new Date(p[0],p[1]-1,1); d.setMonth(d.getMonth()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function outSum(filterFn){ return db.outreach.filter(filterFn).reduce((s,o)=>s+(+o.sent||0),0); }
 
 function blankDB(){
   return { channels:[...DEFAULT_CHANNELS], partnerChannels:[...DEFAULT_CHANNELS], outreach:[], leads:[], clients:[], partners:[], updatedAt:null };
@@ -368,7 +406,7 @@ function today(){ const d=new Date(); return d.toISOString().slice(0,10); }
 function daysBetween(a,b){ if(!a) return null; const s=new Date(a), e=b?new Date(b):new Date(); return Math.max(0, Math.round((e-s)/86400000)); }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pct(n){ return (n*100).toFixed(0)+"%"; }
-function tgLink(t){ if(!t) return '<span class="muted">—</span>'; const h=t.replace(/^@/,''); return `<span class="tg"><a href="https://t.me/${esc(h)}" target="_blank" rel="noopener">@${esc(h)}</a></span>`; }
+function tgLink(t){ if(!t) return '<span class="muted">–</span>'; const h=t.replace(/^@/,''); return `<span class="tg"><a href="https://t.me/${esc(h)}" target="_blank" rel="noopener">@${esc(h)}</a></span>`; }
 
 /* ============================= ХРАНЕНИЕ ============================= */
 const LS_DATA="crm.data", LS_CFG="crm.ghcfg", LS_TOKEN="crm.ghtoken", LS_SHA="crm.ghsha";
@@ -376,7 +414,7 @@ function loadLocal(){
   try{ const raw=localStorage.getItem(LS_DATA); db = raw?JSON.parse(raw):blankDB(); }
   catch(e){ db=blankDB(); }
   if(!db.channels||!db.channels.length) db.channels=[...DEFAULT_CHANNELS];
-  // партнёрский справочник появился позже — при отсутствии копируем текущие каналы
+  // партнёрский справочник появился позже – при отсутствии копируем текущие каналы
   if(!Array.isArray(db.partnerChannels)||!db.partnerChannels.length) db.partnerChannels=[...db.channels];
   ['outreach','leads','clients','partners'].forEach(k=>{ if(!Array.isArray(db[k])) db[k]=[]; });
   ghSha = localStorage.getItem(LS_SHA)||null;
@@ -443,7 +481,7 @@ async function ghLoad(){
   try{
     const c=ghCfg();
     const r=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
-    if(r.status===404){ ghSetStatus('Файл data.json ещё не создан — будет создан при первом сохранении.','warn'); setDirty(true); return; }
+    if(r.status===404){ ghSetStatus('Файл data.json ещё не создан – будет создан при первом сохранении.','warn'); setDirty(true); return; }
     if(!r.ok){ ghSetStatus(`✗ ${r.status} ${r.statusText}`,'err'); renderSync(); return; }
     const j=await r.json();
     const content=b64decode(j.content);
@@ -464,7 +502,7 @@ async function ghSave(){
     if(ghSha) body.sha=ghSha;
     let r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)});
     if(r.status===409 || (r.status===422 && ghSha)){
-      // sha устарел — подтягиваем свежий и повторяем
+      // sha устарел – подтягиваем свежий и повторяем
       const g=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
       if(g.ok){ const gj=await g.json(); body.sha=gj.sha; r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)}); }
     }
@@ -484,7 +522,7 @@ function normalize(parsed){
   d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),audience:(x.audience==='partner'?'partner':'client'),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,comment:x.comment||''}));
   d.leads=(parsed.leads||[]).map(x=>{ let st=x.status||'Написал'; st=LEAD_STATUS_MIGRATE[st]||st; if(!LEAD_STATUSES.includes(st)) st='Написал'; return {id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}; });
   d.clients=(parsed.clients||[]).map(x=>{ let st=x.status||'В работе'; st=CLIENT_STATUS_MIGRATE[st]||st; if(!CLIENT_STATUSES.includes(st)) st='В работе'; return {id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||''}; });
-  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Сотрудничаем'?'Сотрудничаем':'Не сотрудничаем'),comment:x.comment||''}));
+  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Сотрудничаем'?'Сотрудничаем':'Прервали'),comment:x.comment||''}));
   d.updatedAt=parsed.updatedAt||null;
   return d;
 }
@@ -538,20 +576,35 @@ function refreshPeriodSelect(){
   el.value=currentPeriod;
 }
 
-/* ---- Dashboard ---- */
+/* ---- Dashboard (Каналы) ---- */
+const PALETTE=['#3b5bdb','#2f9e44','#e8590c','#7048e8','#e6b800','#0ca678','#e05151','#5b8def','#ad4fd6','#f08c00','#12b886','#845ef7'];
+function chanColors(list){ const m={}; list.forEach((c,i)=>m[c]=PALETTE[i%PALETTE.length]); return m; }
+let chanSort={client:{k:'',dir:-1}, partner:{k:'',dir:-1}};
+function applySort(rows, st){
+  if(!st.k) return rows;
+  return rows.slice().sort((a,b)=>{
+    if(st.k==='ch') return st.dir*String(a.ch).localeCompare(String(b.ch));
+    let av=a.s[st.k], bv=b.s[st.k]; av=(av==null?-1:av); bv=(bv==null?-1:bv);
+    return st.dir*(av-bv);
+  });
+}
+function sortChan(which,k){ const st=chanSort[which]; if(st.k===k) st.dir=-st.dir; else { st.k=k; st.dir=-1; } renderDash(); }
+function updateSortCarets(){
+  document.querySelectorAll('table.sortable th .car').forEach(c=>c.remove());
+  const mark=(id,st)=>{ if(!st.k) return; const th=document.querySelector('#'+id+' th[data-k="'+st.k+'"]'); if(th) th.insertAdjacentHTML('beforeend',`<span class="car">${st.dir<0?'▼':'▲'}</span>`); };
+  mark('chanLeadTable',chanSort.client); mark('chanPartnerTable',chanSort.partner);
+}
 function renderDash(){
-  const totalSent=db.outreach.filter(o=>o.audience!=='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
-  const totalLeads=db.leads.filter(l=>inPeriod(l.dateContacted)).length;
-  const totalClients=db.clients.filter(c=>inPeriod(c.startDate)).length;
-  const cooperating=db.partners.filter(p=>p.status==='Сотрудничаем'&&inPeriod(p.startDate)).length;
-  document.getElementById('dashCards').innerHTML=[
-    card('Отправлено',totalSent),
-    card('ЛИДов',totalLeads, totalSent?('конв. '+pct(totalLeads/totalSent)):''),
-    card('Клиентов',totalClients, totalLeads?('конв. '+pct(totalClients/totalLeads)):''),
-    card('Партнёров',cooperating),
-  ].join('');
-  // лиды/клиенты — по справочнику клиентов
-  document.querySelector('#chanLeadTable tbody').innerHTML = db.channels.map(ch=>{ const s=channelStats(ch); return `
+  // пай-чарты по каналам (период)
+  const leadByChan=db.channels.map(ch=>[ch,db.leads.filter(l=>l.channel===ch&&inPeriod(l.dateContacted)).length]);
+  const cliByChan=db.channels.map(ch=>[ch,db.clients.filter(c=>c.source===ch&&inPeriod(c.startDate)).length]);
+  const parByChan=db.partnerChannels.map(ch=>[ch,db.partners.filter(p=>p.source===ch&&p.status==='Сотрудничаем'&&inPeriod(p.startDate)).length]);
+  document.getElementById('pieLeadsChan').innerHTML = donutSVG(leadByChan,chanColors(db.channels),'лидов')||emptyChart();
+  document.getElementById('pieClientsChan').innerHTML = donutSVG(cliByChan,chanColors(db.channels),'клиентов')||emptyChart();
+  document.getElementById('piePartnersChan').innerHTML = donutSVG(parByChan,chanColors(db.partnerChannels),'партнёров')||emptyChart();
+  // таблица клиентов
+  let cRows=applySort(db.channels.map(ch=>({ch,s:channelStats(ch)})),chanSort.client);
+  document.querySelector('#chanLeadTable tbody').innerHTML = cRows.map(({ch,s})=>`
     <tr>
       <td><b>${esc(ch)}</b></td>
       <td class="num">${s.sent}</td>
@@ -559,30 +612,48 @@ function renderDash(){
       <td class="num">${s.leadsCount}</td>
       <td>${convBar(s.clientConv)}</td>
       <td class="num">${s.becameClient}</td>
-    </tr>`; }).join('') || `<tr><td colspan="6" class="empty">Нет каналов</td></tr>`;
-  // партнёры — по своему справочнику
-  document.querySelector('#chanPartnerTable tbody').innerHTML = db.partnerChannels.map(ch=>{ const s=channelStats(ch); return `
+    </tr>`).join('') || `<tr><td colspan="6" class="empty">Нет каналов</td></tr>`;
+  // таблица партнёров
+  let pRows=applySort(db.partnerChannels.map(ch=>({ch,s:channelStats(ch)})),chanSort.partner);
+  document.querySelector('#chanPartnerTable tbody').innerHTML = pRows.map(({ch,s})=>`
     <tr>
       <td><b>${esc(ch)}</b></td>
       <td class="num">${s.partnerSent}</td>
       <td>${convBar(s.partnerConv)}</td>
       <td class="num">${s.partnerCount}</td>
-    </tr>`; }).join('') || `<tr><td colspan="4" class="empty">Нет каналов</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="4" class="empty">Нет каналов</td></tr>`;
+  updateSortCarets();
 }
 function card(k,v,sub){ return `<div class="card"><div class="k">${esc(k)}</div><div class="v">${v}</div>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>`; }
-function convBar(x){ if(x==null) return '<span class="muted">—</span>'; return `<div class="bararea"><div class="mini"><i style="width:${Math.round(x*100)}%"></i></div><span class="muted">${pct(x)}</span></div>`; }
+function convBar(x){ if(x==null) return '<span class="muted">–</span>'; return `<div class="bararea"><div class="mini"><i style="width:${Math.round(x*100)}%"></i></div><span class="muted">${pct(x)}</span></div>`; }
+function toggleLeadChart(){ const w=document.getElementById('leadChartWrap'), btn=document.getElementById('leadChartBtn'); const show=!w.classList.contains('open'); w.classList.toggle('open',show); btn.classList.toggle('primary',show); }
 
 /* ---- Outreach (рассылки) ---- */
 function renderOutreach(){
-  const weekAgo=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
-  const week=db.outreach.filter(o=>(o.date||'')>=weekAgo).reduce((s,o)=>s+(+o.sent||0),0);
-  const clientSent=db.outreach.filter(o=>o.audience!=='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
-  const partnerSent=db.outreach.filter(o=>o.audience==='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
-  document.getElementById('outreachCards').innerHTML=[
-    card('Отправлено за неделю',week),
-    card('Клиентам'+(currentPeriod?' ('+currentPeriod+')':''),clientSent),
-    card('Партнёрам'+(currentPeriod?' ('+currentPeriod+')':''),partnerSent),
-  ].join('');
+  // --- сводка: текущая неделя Пн–Вс (клиенты синий / партнёры голубой) ---
+  const WD=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const mon=mondayOf(today());
+  const days=[]; for(let i=0;i<7;i++){ const d=new Date(mon); d.setDate(mon.getDate()+i); days.push(d2s(d)); }
+  const wc=days.map(ds=>outSum(o=>o.date===ds&&o.audience!=='partner'));
+  const wp=days.map(ds=>outSum(o=>o.date===ds&&o.audience==='partner'));
+  const thisWeek=wc.reduce((a,b)=>a+b,0)+wp.reduce((a,b)=>a+b,0);
+  document.getElementById('chartWeekday').innerHTML = thisWeek ? stackedBarSVG(WD.map((w,i)=>[w,wc[i],wp[i]])) : emptyChart();
+  // --- накопительная кривая: последние 5 недель (шаг 1 неделя) ---
+  const endMon=mondayOf(today());
+  const weeks=[]; for(let i=4;i>=0;i--){ const d=new Date(endMon); d.setDate(endMon.getDate()-i*7); weeks.push(d2s(d)); }
+  let run=0;
+  const pts=weeks.map(ws=>{ const we=new Date(ws+'T00:00:00'); we.setDate(we.getDate()+6); const wes=d2s(we); run+=outSum(o=>o.date>=ws&&o.date<=wes); return [ws.slice(5),run]; });
+  document.getElementById('chartCumWeek').innerHTML = pts.length ? lineSVG(pts) : emptyChart();
+  // --- воронки (учитывают период) ---
+  const scope=currentPeriod?('· '+currentPeriod):'· всё время';
+  document.getElementById('cfunScope').textContent=scope; document.getElementById('pfunScope').textContent=scope;
+  const csent=outSum(o=>o.audience!=='partner'&&inPeriod(o.date));
+  const cleads=db.leads.filter(l=>!l.partner&&inPeriod(l.dateContacted)).length; // без приведённых партнёром
+  const cclients=db.clients.filter(c=>!c.partner&&inPeriod(c.startDate)).length;
+  document.getElementById('funnelClient').innerHTML = funnelSVG([['Написал',csent,'#3b5bdb'],['ЛИДы',cleads,'#748ffc'],['Клиенты',cclients,'#2f9e44']]);
+  const psent=outSum(o=>o.audience==='partner'&&inPeriod(o.date));
+  const pcontacts=db.partners.filter(p=>inPeriod(p.startDate)).length;
+  const pcoop=db.partners.filter(p=>p.status==='Сотрудничаем'&&inPeriod(p.startDate)).length;
+  document.getElementById('funnelPartner').innerHTML = funnelSVG([['Написал',psent,'#3b5bdb'],['Откликнулись',pcontacts,'#748ffc'],['Стали партнёрами',pcoop,'#2f9e44']]);
   outreachTableInto('outreachClientTable','client');
   outreachTableInto('outreachPartnerTable','partner');
 }
@@ -590,8 +661,8 @@ function outreachTableInto(tableId, audience){
   const rows=db.outreach.filter(o=>(audience==='partner'?o.audience==='partner':o.audience!=='partner') && inPeriod(o.date)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   document.querySelector('#'+tableId+' tbody').innerHTML = rows.map(o=>`
     <tr style="cursor:pointer" onclick="openOutreach('${o.id}')">
-      <td>${esc(o.date||'—')}</td>
-      <td><b>${esc(o.channel||'—')}</b></td>
+      <td>${esc(o.date||'–')}</td>
+      <td><b>${esc(o.channel||'–')}</b></td>
       <td class="num">${o.sent}</td>
       <td class="muted">${esc((o.comment||'').slice(0,50))}</td>
       <td></td>
@@ -600,6 +671,10 @@ function outreachTableInto(tableId, audience){
 
 /* ---- Leads ---- */
 function renderLeads(){
+  // пай статусов лидов (учитывает период)
+  document.getElementById('leadPieScope').textContent = currentPeriod?('· '+currentPeriod):'· всё время';
+  const lp=LEAD_STATUSES.map(s=>[s,db.leads.filter(l=>l.status===s && inPeriod(l.dateContacted)).length]);
+  document.getElementById('chartLeadStatus').innerHTML = donutSVG(lp,LEAD_STATUS_COLORS,'лидов')||emptyChart();
   const q=(document.getElementById('leadSearch').value||'').toLowerCase();
   const sf=document.getElementById('leadStatusFilter').value;
   const cf=document.getElementById('leadChanFilter').value;
@@ -615,12 +690,12 @@ function renderLeads(){
     const linked = l.clientId && db.clients.some(c=>c.id===l.clientId);
     const mark = linked ? `<span class="pill" style="color:#1b6b2b;background:#d7f0dc" title="Есть карточка в Клиентах">✓ в клиентах</span>` : '';
     return `<tr onclick="openLead('${l.id}')" style="cursor:pointer">
-      <td>${esc(l.dateContacted||'—')}</td>
-      <td>${esc(l.channel||'—')}</td>
-      <td><b>${esc(l.name||'—')}</b></td>
+      <td>${esc(l.dateContacted||'–')}</td>
+      <td>${esc(l.channel||'–')}</td>
+      <td><b>${esc(l.name||'–')}</b></td>
       <td>${tgLink(l.telegram)}</td>
       <td><span class="pill" style="color:${fg};background:${bg}">${esc(l.status)}</span></td>
-      <td>${esc(l.partner||'—')}</td>
+      <td>${esc(l.partner||'–')}</td>
       <td class="muted">${esc((l.comment||'').slice(0,60))}</td>
       <td class="rowact">${mark}</td>
     </tr>`;
@@ -649,14 +724,14 @@ function renderClients(){
   tb.innerHTML = rows.map(c=>{
     const days=daysBetween(c.startDate,c.endDate);
     return `<tr style="background:${CLIENT_COLORS[c.status]||'transparent'};cursor:pointer" onclick="openClient('${c.id}')">
-      <td>${esc(c.startDate||'—')}</td>
-      <td>${esc(c.endDate||'—')}</td>
-      <td class="num">${days==null?'—':days}</td>
-      <td>${esc(c.source||'—')}</td>
-      <td><b>${esc(c.name||'—')}</b></td>
+      <td>${esc(c.startDate||'–')}</td>
+      <td>${esc(c.endDate||'–')}</td>
+      <td class="num">${days==null?'–':days}</td>
+      <td>${esc(c.source||'–')}</td>
+      <td><b>${esc(c.name||'–')}</b></td>
       <td>${tgLink(c.telegram)}</td>
       <td><b>${esc(c.status)}</b></td>
-      <td>${esc(c.partner||'—')}</td>
+      <td>${esc(c.partner||'–')}</td>
       <td class="muted">${esc((c.comment||'').slice(0,50))}</td>
       <td></td>
     </tr>`;
@@ -685,13 +760,13 @@ function renderPartners(){
     const cm=partnerComputed(p);
     const [fg,bg]=PARTNER_PILL[p.status]||['#334','#eef1f8'];
     return `<tr style="cursor:pointer" onclick="openPartner('${p.id}')">
-      <td>${esc(p.startDate||'—')}</td>
-      <td>${esc(p.endDate||'—')}</td>
-      <td class="num">${cm.totalDays==null?'—':cm.totalDays}</td>
-      <td>${esc(p.source||'—')}</td>
-      <td><b>${esc(p.name||'—')}</b></td>
+      <td>${esc(p.startDate||'–')}</td>
+      <td>${esc(p.endDate||'–')}</td>
+      <td class="num">${cm.totalDays==null?'–':cm.totalDays}</td>
+      <td>${esc(p.source||'–')}</td>
+      <td><b>${esc(p.name||'–')}</b></td>
       <td>${tgLink(p.telegram)}</td>
-      <td>${esc(p.niche||'—')}</td>
+      <td>${esc(p.niche||'–')}</td>
       <td><span class="pill" style="color:${fg};background:${bg}">${esc(p.status)}</span></td>
       <td class="num">${cm.leadsSent}</td>
       <td class="num">${cm.clientsBrought}</td>
@@ -705,7 +780,7 @@ function renderPartners(){
 /* ============================= МОДАЛКИ ============================= */
 let editKind=null, editId=null;
 function chanOptions(sel,list){ return (list||db.channels).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join(''); }
-function partnerOptions(sel){ return `<option value="">— нет —</option>`+db.partners.map(p=>`<option ${p.name===sel?'selected':''}>${esc(p.name)}</option>`).join(''); }
+function partnerOptions(sel){ return `<option value="">– нет –</option>`+db.partners.map(p=>`<option ${p.name===sel?'selected':''}>${esc(p.name)}</option>`).join(''); }
 function statusOptions(list,sel){ return list.map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join(''); }
 function field(label,inner,full){ return `<label class="f ${full?'full':''}"><span>${label}</span>${inner}</label>`; }
 
@@ -735,13 +810,13 @@ function openClient(id, prefill){
     field('Имя',`<input id="f_name" value="${esc(c.name)}">`)+
     field('Telegram',`<input id="f_tg" value="${esc(c.telegram)}" placeholder="@username">`)+
     field('Партнёр',`<select id="f_partner">${partnerOptions(c.partner)}</select>`)+
-    field('',`<div class="hint" style="align-self:end">Дата финиша ставится сама при статусе «Завершён»/«Отменён». Дней — считается автоматически.</div>`)+
+    field('',`<div class="hint" style="align-self:end">Дата финиша ставится сама при статусе «Завершён»/«Отменён». Дней – считается автоматически.</div>`)+
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(c.comment)}</textarea>`,true);
   showModal(!!id);
 }
 function openPartner(id){
   editKind='partner'; editId=id||null;
-  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.partnerChannels[0]||'',name:'',telegram:'',niche:'',status:'Не сотрудничаем',comment:''};
+  const p = id ? db.partners.find(x=>x.id===id) : {startDate:today(),endDate:'',source:db.partnerChannels[0]||'',name:'',telegram:'',niche:'',status:'Прервали',comment:''};
   document.getElementById('mTitle').textContent = id?'Партнёр':'Новый партнёр';
   document.getElementById('mBody').innerHTML =
     field('Дата старта',`<input type="date" id="f_start" value="${esc(p.startDate)}">`)+
@@ -865,46 +940,57 @@ function fillSelect(id,allLabel){
 }
 
 /* ============================= ГРАФИКИ (SVG) ============================= */
+let dynGran='month', dynCum=false;
+function toggleCum(){ dynCum=!dynCum; document.getElementById('dynCumBtn').classList.toggle('primary',dynCum); renderCharts(); }
 function renderCharts(){
-  document.getElementById('funnelScope').textContent = currentPeriod?('· '+currentPeriod):'· всё время';
-  // Воронка (учитывает период): Написал → ЛИДы → Клиенты (клиентские рассылки)
-  const sent=db.outreach.filter(o=>o.audience!=='partner'&&inPeriod(o.date)).reduce((s,o)=>s+(+o.sent||0),0);
-  const leadsN=db.leads.filter(l=>inPeriod(l.dateContacted)).length;
-  const became=db.clients.filter(c=>inPeriod(c.startDate)).length;
-  document.getElementById('chartFunnel').innerHTML = funnelSVG([
-    ['Написал',sent,'#3b5bdb'],['ЛИДы',leadsN,'#748ffc'],['Стал клиентом',became,'#2f9e44']
-  ]);
-  // Рассылки по дням недели (учитывает период)
-  document.getElementById('weekdayScope').textContent = currentPeriod?('· '+currentPeriod):'· всё время';
-  const WD=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const wsum=[0,0,0,0,0,0,0];
-  db.outreach.filter(o=>inPeriod(o.date)).forEach(o=>{ const d=new Date((o.date||'')+'T00:00:00'); if(!isNaN(d)) wsum[(d.getDay()+6)%7]+=(+o.sent||0); });
-  document.getElementById('chartWeekday').innerHTML = wsum.some(v=>v>0) ? hbarSVG(WD.map((w,i)=>[w,wsum[i]]),false,true) : emptyChart();
-  // Рассылки по месяцам (всё время)
-  const om={}; db.outreach.forEach(o=>{ const k=ym(o.date); if(k) om[k]=(om[k]||0)+(+o.sent||0); });
-  const omRows=Object.keys(om).sort().map(k=>[k,om[k]]);
-  document.getElementById('chartOutreachMonths').innerHTML = omRows.length ? hbarSVG(omRows,false,true) : emptyChart();
-  // Лиды по каналам (период)
-  const chLeads=db.channels.map(ch=>[ch,db.leads.filter(l=>l.channel===ch && inPeriod(l.dateContacted)).length]).filter(x=>x[1]>0);
-  document.getElementById('chartChanLeads').innerHTML = hbarSVG(chLeads,false) || emptyChart();
-  // ЛИДы по статусам — текущий месяц и всё время
-  const leadPie=(scope)=>LEAD_STATUSES.map(s=>[s,db.leads.filter(l=>l.status===s && (scope==='all'||ym(l.dateContacted)===thisMonth())).length]);
-  document.getElementById('chartLeadStatusMonth').innerHTML = donutSVG(leadPie('month'),LEAD_STATUS_COLORS,'лидов') || emptyChart();
-  document.getElementById('chartLeadStatusAll').innerHTML = donutSVG(leadPie('all'),LEAD_STATUS_COLORS,'лидов') || emptyChart();
-  // Динамика по месяцам
-  document.getElementById('chartMonthly').innerHTML = monthlySVG();
+  document.getElementById('dynScope').textContent = (currentPeriod?('· '+currentPeriod):'· всё время')+(dynCum?' · накопительно':'');
+  document.getElementById('chartMonthly').innerHTML = dynamicsSVG(dynGran,dynCum);
 }
 function emptyChart(){ return `<div class="empty">Нет данных</div>`; }
 function funnelSVG(rows){
   const max=Math.max(1,...rows.map(r=>r[1]));
-  const W=480,rh=48,gap=10; const H=rows.length*(rh+gap);
+  const W=380,rh=44,gap=10,labelW=112; const H=rows.length*(rh+gap);
   let y=0,svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
   rows.forEach(([label,v,color],i)=>{
-    const w=Math.max(2,(v/max)*(W-320));
+    // минимальная ширина бара, чтобы процент всегда влезал внутрь
+    const w=v>0 ? Math.max(42,(v/max)*(W-labelW-46)) : 2;
     const prev = i>0 ? rows[i-1][1] : null;
-    const rel = i===0 ? '' : (prev>0 ? ` · ${pct(v/prev)} от пред.` : ' · —');
-    svg+=`<rect x="130" y="${y+6}" width="${w}" height="${rh-12}" rx="6" fill="${color}"/>`;
-    svg+=`<text x="0" y="${y+rh/2+4}" font-size="13" fill="#444">${esc(label)}</text>`;
-    svg+=`<text x="${135+w}" y="${y+rh/2+4}" font-size="12" fill="#222"><tspan font-weight="700">${v}</tspan><tspan fill="#888">${esc(rel)}</tspan></text>`;
+    const p = i===0 ? '' : (prev>0 ? Math.round(v/prev*100)+'%' : '–');
+    svg+=`<rect x="${labelW}" y="${y+6}" width="${w.toFixed(1)}" height="${rh-12}" rx="6" fill="${color}"/>`;
+    svg+=`<text x="0" y="${y+rh/2+4}" font-size="12" fill="#444">${esc(label)}</text>`;
+    if(p) svg+=`<text x="${(labelW+w/2).toFixed(1)}" y="${y+rh/2+4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${p}</text>`;
+    svg+=`<text x="${(labelW+w+6).toFixed(1)}" y="${y+rh/2+4}" font-size="12" fill="#222" font-weight="700">${v}</text>`;
+    y+=rh+gap;
+  });
+  return svg+'</svg>';
+}
+function lineSVG(pts){
+  if(!pts.length) return emptyChart();
+  const max=Math.max(1,...pts.map(p=>p[1]));
+  const W=380,H=170,pad=24,padL=30;
+  const xat=i=>pts.length===1?W/2:padL+i*((W-padL-8)/(pts.length-1));
+  const yat=v=>H-pad-(v/max)*(H-pad*2);
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  for(let g=0;g<=2;g++){ const yy=pad+(H-pad*2)*g/2, v=Math.round(max*(1-g/2)); svg+=`<line x1="${padL}" y1="${yy}" x2="${W-8}" y2="${yy}" stroke="#eef1f8"/><text x="2" y="${yy+3}" font-size="9" fill="#aaa">${v}</text>`; }
+  const d=pts.map((p,i)=>`${i?'L':'M'} ${xat(i).toFixed(1)} ${yat(p[1]).toFixed(1)}`).join(' ');
+  svg+=`<path d="${d}" fill="none" stroke="#3b5bdb" stroke-width="2.5"/>`;
+  pts.forEach((p,i)=>{ svg+=`<circle cx="${xat(i).toFixed(1)}" cy="${yat(p[1]).toFixed(1)}" r="2.5" fill="#3b5bdb"/>`; });
+  const step=Math.max(1,Math.ceil(pts.length/6));
+  pts.forEach((p,i)=>{ if(i%step===0||i===pts.length-1) svg+=`<text x="${xat(i).toFixed(1)}" y="${H-7}" font-size="9" fill="#888" text-anchor="middle">${esc(p[0])}</text>`; });
+  return svg+'</svg>';
+}
+function stackedBarSVG(rows){
+  // rows: [label, clientVal, partnerVal]
+  const totals=rows.map(r=>r[1]+r[2]); const max=Math.max(1,...totals);
+  const W=380,rh=26,gap=6,labelW=32,numW=30; const barMax=W-labelW-numW-6; const H=rows.length*(rh+gap);
+  let y=0,svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  rows.forEach(([label,cv,pv])=>{
+    const cw=(cv/max)*barMax, pw=(pv/max)*barMax;
+    svg+=`<text x="0" y="${y+rh/2+4}" font-size="11" fill="#444">${esc(label)}</text>`;
+    let x=labelW;
+    if(cv>0){ svg+=`<rect x="${x.toFixed(1)}" y="${y+4}" width="${Math.max(cw,2).toFixed(1)}" height="${rh-8}" rx="3" fill="#3b5bdb"/>`; if(cw>14) svg+=`<text x="${(x+cw/2).toFixed(1)}" y="${y+rh/2+4}" text-anchor="middle" font-size="10" fill="#fff" font-weight="700">${cv}</text>`; x+=cw; }
+    if(pv>0){ svg+=`<rect x="${x.toFixed(1)}" y="${y+4}" width="${Math.max(pw,2).toFixed(1)}" height="${rh-8}" rx="3" fill="#748ffc"/>`; if(pw>14) svg+=`<text x="${(x+pw/2).toFixed(1)}" y="${y+rh/2+4}" text-anchor="middle" font-size="10" fill="#fff" font-weight="700">${pv}</text>`; x+=pw; }
+    svg+=`<text x="${labelW+barMax+5}" y="${y+rh/2+4}" font-size="11" font-weight="700" fill="#222">${cv+pv}</text>`;
     y+=rh+gap;
   });
   return svg+'</svg>';
@@ -927,51 +1013,70 @@ function hbarSVG(rows,isPct,keepOrder){
 function donutSVG(rows,colors,unit){
   const total=rows.reduce((s,r)=>s+r[1],0);
   if(!total) return '';
-  const cx=90,cy=90,r=70,sw=28; let a=-Math.PI/2;
-  let svg=`<svg viewBox="0 0 300 180" width="100%">`;
+  const cx=88,cy=90,r=68,sw=26; let a=-Math.PI/2;
+  let svg=`<svg viewBox="0 0 372 180" width="100%">`;
   rows.forEach(([label,v])=>{
     if(!v) return; const frac=v/total, a2=a+frac*2*Math.PI;
     const x1=cx+r*Math.cos(a),y1=cy+r*Math.sin(a),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
     const large=frac>0.5?1:0;
     svg+=`<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${colors[label]||'#888'}" stroke-width="${sw}"/>`;
+    if(frac>=0.07){ const mid=(a+a2)/2, lx=cx+r*Math.cos(mid), ly=cy+r*Math.sin(mid);
+      svg+=`<text x="${lx.toFixed(1)}" y="${(ly+3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${Math.round(frac*100)}%</text>`; }
     a=a2;
   });
   svg+=`<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="700">${total}</text>`;
   svg+=`<text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="11" fill="#777">${esc(unit||'')}</text>`;
-  // legend
-  let ly=30; rows.forEach(([label,v])=>{ svg+=`<rect x="185" y="${ly-10}" width="11" height="11" rx="3" fill="${colors[label]||'#888'}"/><text x="202" y="${ly}" font-size="12" fill="#444">${esc(label)} — ${v}</text>`; ly+=24; });
+  // legend (без процента — процент на дольке); длинные названия подрезаем
+  const cut=s=>s.length>20?s.slice(0,19)+'…':s;
+  let ly=22; rows.forEach(([label,v])=>{ if(!v) return; svg+=`<rect x="174" y="${ly-9}" width="11" height="11" rx="3" fill="${colors[label]||'#888'}"/><text x="191" y="${ly}" font-size="11" fill="#444">${esc(cut(label))} – ${v}</text>`; ly+=22; });
   return svg+'</svg>';
 }
-function monthlySVG(){
-  const map={}; // ym -> {sent, became, clients}
-  const bump=(ym,k,n)=>{ if(!ym||!n) return; (map[ym]=map[ym]||{sent:0,became:0,clients:0})[k]+=n; };
-  db.outreach.forEach(o=>{ if(o.audience!=='partner') bump((o.date||'').slice(0,7),'sent',+o.sent||0); });
-  db.leads.forEach(l=>{ if(l.status==='Стал клиентом') bump((l.dateContacted||'').slice(0,7),'became',1); });
-  db.clients.forEach(c=>{ bump((c.startDate||'').slice(0,7),'clients',1); });
+function dynamicsSVG(gran,cum){
+  // gran: 'month' | 'week' | 'day'; учитывает выбранный период; cum — накопительно
+  const bkey=(d)=>{ if(!d) return ''; const ds=d.slice(0,10); if(gran==='month') return ds.slice(0,7); if(gran==='day') return ds; return d2s(mondayOf(ds)); };
+  const label=(k)=>{ if(gran==='month') return k; if(gran==='day') return k.slice(5); return 'с '+k.slice(5); };
+  const map={};
+  const bump=(d,key,n)=>{ if(!n||!d||!inPeriod(d)) return; const bk=bkey(d); if(!bk) return; (map[bk]=map[bk]||{sent:0,leads:0,clients:0,partners:0})[key]+=n; };
+  db.outreach.forEach(o=>bump(o.date,'sent',+o.sent||0)); // отправлено – клиентам + партнёрам
+  db.leads.forEach(l=>bump(l.dateContacted,'leads',1));
+  db.clients.forEach(c=>bump(c.startDate,'clients',1));
+  db.partners.forEach(p=>{ if(p.status==='Сотрудничаем') bump(p.startDate,'partners',1); });
   const keys=Object.keys(map).sort();
   if(!keys.length) return emptyChart();
-  const W=500,H=300,pad=36; const max=Math.max(1,...keys.map(k=>Math.max(map[k].sent,map[k].became,map[k].clients)));
+  if(cum){ const run={sent:0,leads:0,clients:0,partners:0}; keys.forEach(k=>{ ['sent','leads','clients','partners'].forEach(m=>{ run[m]+=map[k][m]; map[k][m]=run[m]; }); }); }
+  const W=900,H=320,pad=36; const max=Math.max(1,...keys.map(k=>Math.max(map[k].sent,map[k].leads,map[k].clients,map[k].partners)));
   const xw=(W-pad*2)/Math.max(1,keys.length-1||1);
   const xat=i=>keys.length===1?W/2:pad+i*xw;
   const yat=v=>H-pad-(v/max)*(H-pad*2);
   const line=(key,color)=>{ const d=keys.map((k,i)=>`${i?'L':'M'} ${xat(i).toFixed(1)} ${yat(map[k][key]).toFixed(1)}`).join(' '); return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5"/>`+keys.map((k,i)=>`<circle cx="${xat(i).toFixed(1)}" cy="${yat(map[k][key]).toFixed(1)}" r="3" fill="${color}"/>`).join(''); };
   let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
-  // grid + y labels
   for(let g=0;g<=4;g++){ const yy=pad+(H-pad*2)*g/4, v=Math.round(max*(1-g/4)); svg+=`<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="#eef1f8"/><text x="4" y="${yy+4}" font-size="10" fill="#aaa">${v}</text>`; }
-  keys.forEach((k,i)=>{ svg+=`<text x="${xat(i)}" y="${H-10}" font-size="10" fill="#888" text-anchor="middle">${k}</text>`; });
-  svg+=line('sent','#3b5bdb')+line('became','#2f9e44')+line('clients','#e8590c');
+  const step=Math.ceil(keys.length/14);
+  keys.forEach((k,i)=>{ if(i%step===0) svg+=`<text x="${xat(i)}" y="${H-10}" font-size="10" fill="#888" text-anchor="middle">${esc(label(k))}</text>`; });
+  svg+=line('sent','#3b5bdb')+line('leads','#748ffc')+line('clients','#2f9e44')+line('partners','#e8590c');
   return svg+'</svg>';
 }
 
 /* ============================= НАВИГАЦИЯ / UI ============================= */
 document.getElementById('nav').addEventListener('click',e=>{
   const b=e.target.closest('button[data-view]'); if(!b) return;
+  document.getElementById('btnSettings').classList.remove('active');
   document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+b.dataset.view).classList.add('active');
   if(b.dataset.view==='charts') renderCharts();
 });
+document.getElementById('btnSettings').addEventListener('click',()=>{
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));
+  document.getElementById('btnSettings').classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-settings').classList.add('active');
+});
+// сортировка таблиц каналов по клику на заголовок
+document.querySelector('#chanLeadTable thead').addEventListener('click',e=>{ const th=e.target.closest('th[data-k]'); if(th) sortChan('client',th.dataset.k); });
+document.querySelector('#chanPartnerTable thead').addEventListener('click',e=>{ const th=e.target.closest('th[data-k]'); if(th) sortChan('partner',th.dataset.k); });
+document.getElementById('dynGranBtns').addEventListener('click',e=>{ const b=e.target.closest('button[data-g]'); if(!b) return; dynGran=b.dataset.g; document.querySelectorAll('#dynGranBtns button').forEach(x=>x.classList.toggle('primary',x.dataset.g===dynGran)); renderCharts(); });
 document.getElementById('periodSel').addEventListener('change',e=>{ currentPeriod=e.target.value; renderAll(); });
 ['leadSearch','leadStatusFilter','leadChanFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderLeads));
 ['clientSearch','clientStatusFilter','clientSourceFilter'].forEach(id=>document.getElementById(id).addEventListener('input',renderClients));
@@ -1010,6 +1115,7 @@ function toast(t){ const el=document.getElementById('toast'); el.textContent=t; 
 /* ============================= СТАРТ ============================= */
 restoreCfg();
 loadLocal();
+currentPeriod = thisMonth(); // по умолчанию – текущий месяц
 renderAll();
 // автозагрузка из GitHub при старте, если настроено и локально пусто
 window.addEventListener('load',()=>{
