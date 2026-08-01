@@ -208,7 +208,7 @@
   <section class="view" id="view-leads">
     <div class="toolbar">
       <button class="btn primary" onclick="openLead()">+ Лид</button>
-      <input type="search" id="leadSearch" placeholder="Поиск по имени / телеграму / комментарию…">
+      <input type="search" id="leadSearch" placeholder="Поиск по имени / телеграму / комментарию…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="lead-search-nofill">
       <select id="leadStatusFilter" style="width:auto;min-width:180px"><option value="">Все статусы</option></select>
       <select id="leadChanFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
       <button class="btn" id="leadChartBtn" style="margin-left:auto" onclick="toggleLeadChart()">График</button>
@@ -234,7 +234,7 @@
     <div class="cards" id="clientCards"></div>
     <div class="toolbar">
       <button class="btn primary" onclick="openClient()">+ Клиент</button>
-      <input type="search" id="clientSearch" placeholder="Поиск…">
+      <input type="search" id="clientSearch" placeholder="Поиск…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="client-search-nofill">
       <select id="clientStatusFilter" style="width:auto;min-width:170px"><option value="">Все статусы</option></select>
       <select id="clientSourceFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
     </div>
@@ -255,7 +255,7 @@
     <div class="cards" id="partnerCards"></div>
     <div class="toolbar">
       <button class="btn primary" onclick="openPartner()">+ Партнёр</button>
-      <input type="search" id="partnerSearch" placeholder="Поиск…">
+      <input type="search" id="partnerSearch" placeholder="Поиск…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="partner-search-nofill">
       <select id="partnerStatusFilter" style="width:auto;min-width:170px"><option value="">Все статусы</option></select>
     </div>
     <div class="panel">
