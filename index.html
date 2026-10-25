@@ -127,8 +127,8 @@
       <span class="dot" id="syncDot"></span>
       <span id="syncText">не синхронизировано</span>
     </div>
-    <button class="btn" id="btnLoad">Загрузить</button>
-    <button class="btn primary" id="btnSave">Сохранить в GitHub</button>
+    <button class="btn" id="btnLoad">Забрать из GitHub</button>
+    <button class="btn primary" id="btnSave">Отдать в GitHub</button>
   </div>
 </header>
 
@@ -208,7 +208,7 @@
   <section class="view" id="view-leads">
     <div class="toolbar">
       <button class="btn primary" onclick="openLead()">+ Лид</button>
-      <input type="search" id="leadSearch" placeholder="Поиск по имени / телеграму / комментарию…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="lead-search-nofill">
+      <input type="search" id="leadSearch" placeholder="Поиск по имени / телеграму / комментарию…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="lead-search-nofill" readonly onfocus="this.removeAttribute('readonly')">
       <select id="leadStatusFilter" style="width:auto;min-width:180px"><option value="">Все статусы</option></select>
       <select id="leadChanFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
       <button class="btn" id="leadChartBtn" style="margin-left:auto" onclick="toggleLeadChart()">График</button>
@@ -234,7 +234,7 @@
     <div class="cards" id="clientCards"></div>
     <div class="toolbar">
       <button class="btn primary" onclick="openClient()">+ Клиент</button>
-      <input type="search" id="clientSearch" placeholder="Поиск…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="client-search-nofill">
+      <input type="search" id="clientSearch" placeholder="Поиск…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="client-search-nofill" readonly onfocus="this.removeAttribute('readonly')">
       <select id="clientStatusFilter" style="width:auto;min-width:170px"><option value="">Все статусы</option></select>
       <select id="clientSourceFilter" style="width:auto;min-width:160px"><option value="">Все каналы</option></select>
     </div>
@@ -255,7 +255,7 @@
     <div class="cards" id="partnerCards"></div>
     <div class="toolbar">
       <button class="btn primary" onclick="openPartner()">+ Партнёр</button>
-      <input type="search" id="partnerSearch" placeholder="Поиск…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="partner-search-nofill">
+      <input type="search" id="partnerSearch" placeholder="Поиск…" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" name="partner-search-nofill" readonly onfocus="this.removeAttribute('readonly')">
       <select id="partnerStatusFilter" style="width:auto;min-width:170px"><option value="">Все статусы</option></select>
     </div>
     <div class="panel">
@@ -399,8 +399,9 @@ function prevMonthStr(m){ const p=m.split('-').map(Number); const d=new Date(p[0
 function outSum(filterFn){ return db.outreach.filter(filterFn).reduce((s,o)=>s+(+o.sent||0),0); }
 
 function blankDB(){
-  return { channels:[...DEFAULT_CHANNELS], partnerChannels:[...DEFAULT_CHANNELS], outreach:[], leads:[], clients:[], partners:[], updatedAt:null };
+  return { channels:[...DEFAULT_CHANNELS], partnerChannels:[...DEFAULT_CHANNELS], outreach:[], leads:[], clients:[], partners:[], tombstones:{}, updatedAt:null };
 }
+function now(){ return Date.now(); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function today(){ const d=new Date(); return d.toISOString().slice(0,10); }
 function daysBetween(a,b){ if(!a) return null; const s=new Date(a), e=b?new Date(b):new Date(); return Math.max(0, Math.round((e-s)/86400000)); }
@@ -417,6 +418,7 @@ function loadLocal(){
   // партнёрский справочник появился позже – при отсутствии копируем текущие каналы
   if(!Array.isArray(db.partnerChannels)||!db.partnerChannels.length) db.partnerChannels=[...db.channels];
   ['outreach','leads','clients','partners'].forEach(k=>{ if(!Array.isArray(db[k])) db[k]=[]; });
+  if(!db.tombstones || typeof db.tombstones!=='object') db.tombstones={};
   ghSha = localStorage.getItem(LS_SHA)||null;
 }
 function saveLocal(mark=true){
@@ -476,6 +478,7 @@ async function ghTest(){
     else ghSetStatus(`✗ ${r.status} ${r.statusText}. Проверь имя репо и права токена.`,'err');
   }catch(e){ ghSetStatus('✗ '+e.message,'err'); }
 }
+function sig(d){ return JSON.stringify({c:d.channels,pc:d.partnerChannels,o:d.outreach,l:d.leads,cl:d.clients,p:d.partners,t:d.tombstones}); }
 async function ghLoad(){
   ghSetStatus('Загружаю…'); renderSync('loading');
   try{
@@ -484,33 +487,39 @@ async function ghLoad(){
     if(r.status===404){ ghSetStatus('Файл data.json ещё не создан – будет создан при первом сохранении.','warn'); setDirty(true); return; }
     if(!r.ok){ ghSetStatus(`✗ ${r.status} ${r.statusText}`,'err'); renderSync(); return; }
     const j=await r.json();
-    const content=b64decode(j.content);
-    const parsed=JSON.parse(content);
-    db = normalize(parsed); ghSha=j.sha;
+    const remote=normalize(JSON.parse(b64decode(j.content)));
+    db = mergeDB(db, remote); ghSha=j.sha;            // сливаем, локальное не теряем
     localStorage.setItem(LS_SHA, ghSha);
     localStorage.setItem(LS_DATA, JSON.stringify(db));
-    setDirty(false); ghSetStatus('✓ Данные загружены из GitHub','ok');
-    renderAll(); toast('Загружено из GitHub');
+    // если после слияния появилось что-то, чего нет в удалённом — надо будет сохранить
+    setDirty(sig(db)!==sig(remote));
+    ghSetStatus('✓ Синхронизировано с GitHub','ok');
+    renderAll(); toast('Загружено и слито');
   }catch(e){ ghSetStatus('✗ '+e.message,'err'); renderSync(); }
 }
 async function ghSave(){
   ghSetStatus('Сохраняю…'); renderSync('loading');
   try{
     const c=ghCfg();
-    db.updatedAt=new Date().toISOString();
+    // 1) подтянуть актуальное из GitHub и слить с локальным (чтобы не затереть чужое)
+    let remoteSha=null;
+    const g=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
+    if(g.ok){ const gj=await g.json(); remoteSha=gj.sha; try{ db=mergeDB(db, normalize(JSON.parse(b64decode(gj.content)))); }catch(e){} }
+    else if(g.status!==404){ ghSetStatus(`✗ ${g.status} ${g.statusText}`,'err'); renderSync(); return; }
+    // 2) записать слитый результат
     const body={ message:`crm: update ${new Date().toISOString()}`, content:b64encode(JSON.stringify(db,null,2)), branch:c.branch };
-    if(ghSha) body.sha=ghSha;
+    if(remoteSha) body.sha=remoteSha;
     let r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)});
-    if(r.status===409 || (r.status===422 && ghSha)){
-      // sha устарел – подтягиваем свежий и повторяем
-      const g=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
-      if(g.ok){ const gj=await g.json(); body.sha=gj.sha; r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)}); }
+    if(r.status===409 || r.status===422){
+      // кто-то записал между fetch и put – сливаем ещё раз и повторяем
+      const g2=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
+      if(g2.ok){ const gj=await g2.json(); try{ db=mergeDB(db, normalize(JSON.parse(b64decode(gj.content)))); }catch(e){} body.sha=gj.sha; body.content=b64encode(JSON.stringify(db,null,2)); r=await ghApi(`/contents/${encodeURIComponent(c.path)}`,{method:'PUT',body:JSON.stringify(body)}); }
     }
     if(!r.ok){ const t=await r.text(); ghSetStatus(`✗ ${r.status}: ${t.slice(0,140)}`,'err'); renderSync(); return; }
     const j=await r.json();
     ghSha=j.content.sha; localStorage.setItem(LS_SHA,ghSha);
     localStorage.setItem(LS_DATA, JSON.stringify(db));
-    setDirty(false); ghSetStatus('✓ Сохранено в GitHub','ok'); toast('Сохранено в GitHub');
+    setDirty(false); ghSetStatus('✓ Сохранено и синхронизировано','ok'); renderAll(); toast('Сохранено и синхронизировано');
   }catch(e){ ghSetStatus('✗ '+e.message,'err'); renderSync(); }
 }
 function ghSetStatus(t,cls){ const el=document.getElementById('ghStatus'); el.textContent=t; el.style.color= cls==='ok'?'var(--ok)':cls==='err'?'var(--danger)':cls==='warn'?'var(--warn)':'var(--muted)'; }
@@ -519,12 +528,36 @@ function normalize(parsed){
   const d=blankDB();
   if(Array.isArray(parsed.channels)&&parsed.channels.length) d.channels=parsed.channels;
   d.partnerChannels=(Array.isArray(parsed.partnerChannels)&&parsed.partnerChannels.length)?parsed.partnerChannels:[...d.channels];
-  d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),audience:(x.audience==='partner'?'partner':'client'),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,comment:x.comment||''}));
-  d.leads=(parsed.leads||[]).map(x=>{ let st=x.status||'Написал'; st=LEAD_STATUS_MIGRATE[st]||st; if(!LEAD_STATUSES.includes(st)) st='Написал'; return {id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||''}; });
-  d.clients=(parsed.clients||[]).map(x=>{ let st=x.status||'В работе'; st=CLIENT_STATUS_MIGRATE[st]||st; if(!CLIENT_STATUSES.includes(st)) st='В работе'; return {id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||''}; });
-  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Сотрудничаем'?'Сотрудничаем':'Прервали'),comment:x.comment||''}));
+  d.outreach=(parsed.outreach||[]).map(x=>({id:x.id||uid(),audience:(x.audience==='partner'?'partner':'client'),date:x.date||'',channel:x.channel||'',sent:+x.sent||0,comment:x.comment||'',mod:+x.mod||0}));
+  d.leads=(parsed.leads||[]).map(x=>{ let st=x.status||'Написал'; st=LEAD_STATUS_MIGRATE[st]||st; if(!LEAD_STATUSES.includes(st)) st='Написал'; return {id:x.id||uid(),dateContacted:x.dateContacted||'',channel:x.channel||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||'',clientId:x.clientId||'',mod:+x.mod||0}; });
+  d.clients=(parsed.clients||[]).map(x=>{ let st=x.status||'В работе'; st=CLIENT_STATUS_MIGRATE[st]||st; if(!CLIENT_STATUSES.includes(st)) st='В работе'; return {id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',status:st,partner:x.partner||'',comment:x.comment||'',mod:+x.mod||0}; });
+  d.partners=(parsed.partners||[]).map(x=>({id:x.id||uid(),startDate:x.startDate||'',endDate:x.endDate||'',source:x.source||'',name:x.name||'',telegram:x.telegram||'',niche:x.niche||'',status:(x.status==='Сотрудничаем'?'Сотрудничаем':'Прервали'),comment:x.comment||'',mod:+x.mod||0}));
+  if(parsed.tombstones && typeof parsed.tombstones==='object'){ for(const id in parsed.tombstones) d.tombstones[id]=+parsed.tombstones[id]||0; }
   d.updatedAt=parsed.updatedAt||null;
   return d;
+}
+/* ---- Слияние данных с разных устройств (по id, новее — побеждает) ---- */
+function mergeArr(localArr, remoteArr, tomb){
+  const map=new Map();
+  const put=arr=>(arr||[]).forEach(r=>{ const ex=map.get(r.id); if(!ex || (r.mod||0) >= (ex.mod||0)) map.set(r.id,r); });
+  put(remoteArr); put(localArr); // при равном mod берём локальную
+  const out=[]; map.forEach((r,id)=>{ if((r.mod||0) > (tomb[id]||0)) out.push(r); });
+  return out;
+}
+function mergeDB(local, remote){
+  const tomb={};
+  [remote.tombstones||{}, local.tombstones||{}].forEach(ts=>{ for(const id in ts) tomb[id]=Math.max(tomb[id]||0, +ts[id]||0); });
+  const unionStr=(a,b)=>{ const s=[...(a||[])]; (b||[]).forEach(x=>{ if(!s.includes(x)) s.push(x); }); return s; };
+  return {
+    channels: unionStr(local.channels, remote.channels),
+    partnerChannels: unionStr(local.partnerChannels, remote.partnerChannels),
+    outreach: mergeArr(local.outreach, remote.outreach, tomb),
+    leads: mergeArr(local.leads, remote.leads, tomb),
+    clients: mergeArr(local.clients, remote.clients, tomb),
+    partners: mergeArr(local.partners, remote.partners, tomb),
+    tombstones: tomb,
+    updatedAt: new Date().toISOString()
+  };
 }
 
 /* ============================= ВЫЧИСЛЕНИЯ ============================= */
@@ -791,8 +824,8 @@ function openLead(id){
   document.getElementById('mBody').innerHTML =
     field('Дата контакта',`<input type="date" id="f_date" value="${esc(l.dateContacted)}">`)+
     field('Канал',`<select id="f_channel">${chanOptions(l.channel)}</select>`)+
-    field('Имя',`<input id="f_name" value="${esc(l.name)}">`)+
-    field('Telegram',`<input id="f_tg" value="${esc(l.telegram)}" placeholder="@username">`)+
+    field('Имя',`<input id="f_name" value="${esc(l.name)}" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`)+
+    field('Telegram',`<input id="f_tg" value="${esc(l.telegram)}" placeholder="@username" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`)+
     field('Статус',`<select id="f_status">${statusOptions(LEAD_STATUSES,l.status)}</select>`)+
     field('Партнёр (кто прислал)',`<select id="f_partner">${partnerOptions(l.partner)}</select>`)+
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(l.comment)}</textarea>`,true);
@@ -807,8 +840,8 @@ function openClient(id, prefill){
     field('Дата финиша',`<input type="date" id="f_end" value="${esc(c.endDate)}">`)+
     field('Канал',`<select id="f_source">${chanOptions(c.source)}</select>`)+
     field('Статус',`<select id="f_status">${statusOptions(CLIENT_STATUSES,c.status)}</select>`)+
-    field('Имя',`<input id="f_name" value="${esc(c.name)}">`)+
-    field('Telegram',`<input id="f_tg" value="${esc(c.telegram)}" placeholder="@username">`)+
+    field('Имя',`<input id="f_name" value="${esc(c.name)}" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`)+
+    field('Telegram',`<input id="f_tg" value="${esc(c.telegram)}" placeholder="@username" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`)+
     field('Партнёр',`<select id="f_partner">${partnerOptions(c.partner)}</select>`)+
     field('',`<div class="hint" style="align-self:end">Дата финиша ставится сама при статусе «Завершён»/«Отменён». Дней – считается автоматически.</div>`)+
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(c.comment)}</textarea>`,true);
@@ -823,9 +856,9 @@ function openPartner(id){
     field('Дата финиша',`<input type="date" id="f_end" value="${esc(p.endDate)}">`)+
     field('Канал (источник)',`<select id="f_source">${chanOptions(p.source,db.partnerChannels)}</select>`)+
     field('Статус',`<select id="f_status">${statusOptions(PARTNER_STATUSES,p.status)}</select>`)+
-    field('Имя',`<input id="f_name" value="${esc(p.name)}">`)+
-    field('Telegram',`<input id="f_tg" value="${esc(p.telegram)}" placeholder="@username">`)+
-    field('Ниша',`<input id="f_niche" value="${esc(p.niche)}">`,true)+
+    field('Имя',`<input id="f_name" value="${esc(p.name)}" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`)+
+    field('Telegram',`<input id="f_tg" value="${esc(p.telegram)}" placeholder="@username" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`)+
+    field('Ниша',`<input id="f_niche" value="${esc(p.niche)}" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other">`,true)+
     field('Комментарий',`<textarea id="f_comment" rows="2">${esc(p.comment)}</textarea>`,true);
   showModal(!!id);
 }
@@ -857,26 +890,26 @@ function applyAutoEnd(rec, terminalSet){
 function saveModal(){
   if(editKind==='lead'){
     const prev = editId ? db.leads.find(x=>x.id===editId) : null;
-    const rec={id:editId||uid(),dateContacted:val('f_date'),channel:val('f_channel'),name:val('f_name'),telegram:val('f_tg'),status:val('f_status'),partner:val('f_partner'),comment:val('f_comment'),clientId:(prev&&prev.clientId)||''};
+    const rec={id:editId||uid(),dateContacted:val('f_date'),channel:val('f_channel'),name:val('f_name'),telegram:val('f_tg'),status:val('f_status'),partner:val('f_partner'),comment:val('f_comment'),clientId:(prev&&prev.clientId)||'',mod:now()};
     // авто-добавление в Клиенты при статусе «Стал клиентом» (без дублей)
     if(rec.status==='Стал клиентом'){
       const has = rec.clientId && db.clients.some(c=>c.id===rec.clientId);
       if(!has){
-        const cli={id:uid(),startDate:today(),endDate:'',source:rec.channel,name:rec.name,telegram:rec.telegram,status:'В работе',partner:rec.partner,comment:rec.comment};
+        const cli={id:uid(),startDate:today(),endDate:'',source:rec.channel,name:rec.name,telegram:rec.telegram,status:'В работе',partner:rec.partner,comment:rec.comment,mod:now()};
         db.clients.unshift(cli); rec.clientId=cli.id; toast('Лид добавлен в Клиенты');
       }
     }
     upsert(db.leads,rec);
   } else if(editKind==='client'){
-    const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),status:val('f_status'),partner:val('f_partner'),comment:val('f_comment')};
+    const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),status:val('f_status'),partner:val('f_partner'),comment:val('f_comment'),mod:now()};
     applyAutoEnd(rec,CLIENT_TERMINAL);
     upsert(db.clients,rec);
   } else if(editKind==='partner'){
-    const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),niche:val('f_niche'),status:val('f_status'),comment:val('f_comment')};
+    const rec={id:editId||uid(),startDate:val('f_start'),endDate:val('f_end'),source:val('f_source'),name:val('f_name'),telegram:val('f_tg'),niche:val('f_niche'),status:val('f_status'),comment:val('f_comment'),mod:now()};
     applyAutoEnd(rec,PARTNER_TERMINAL);
     upsert(db.partners,rec);
   } else if(editKind==='outreach'){
-    const rec={id:editId||uid(),audience:outreachAudience,date:val('f_date'),channel:val('f_channel'),sent:Math.max(0,parseInt(val('f_sent'),10)||0),comment:val('f_comment')};
+    const rec={id:editId||uid(),audience:outreachAudience,date:val('f_date'),channel:val('f_channel'),sent:Math.max(0,parseInt(val('f_sent'),10)||0),comment:val('f_comment'),mod:now()};
     upsert(db.outreach,rec);
   }
   saveLocal(); renderAll(); closeModal();
@@ -884,6 +917,7 @@ function saveModal(){
 function upsert(arr,rec){ const i=arr.findIndex(x=>x.id===rec.id); if(i>=0) arr[i]=rec; else arr.unshift(rec); }
 function deleteCurrent(){
   if(!editId) return; if(!confirm('Удалить запись?')) return;
+  db.tombstones[editId]=now(); // метка удаления, чтобы запись не «воскресла» при слиянии
   if(editKind==='lead') db.leads=db.leads.filter(x=>x.id!==editId);
   if(editKind==='client') db.clients=db.clients.filter(x=>x.id!==editId);
   if(editKind==='partner') db.partners=db.partners.filter(x=>x.id!==editId);
@@ -1086,7 +1120,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
 
 // header buttons
 document.getElementById('btnSave').onclick=()=>{ saveCfg(); ghSave(); };
-document.getElementById('btnLoad').onclick=()=>{ saveCfg(); if(dirty && !confirm('Есть несохранённые локальные изменения. Загрузка из GitHub их перезапишет. Продолжить?')) return; ghLoad(); };
+document.getElementById('btnLoad').onclick=()=>{ saveCfg(); ghLoad(); };
 document.getElementById('btnTest').onclick=()=>{ saveCfg(); ghTest(); };
 document.getElementById('btnSave2').onclick=()=>{ saveCfg(); ghSave(); };
 document.getElementById('btnLoad2').onclick=()=>{ saveCfg(); ghLoad(); };
