@@ -497,15 +497,22 @@ async function ghLoad(){
     renderAll(); toast('Загружено и слито');
   }catch(e){ ghSetStatus('✗ '+e.message,'err'); renderSync(); }
 }
+function recCount(d){ return (d.outreach||[]).length+(d.leads||[]).length+(d.clients||[]).length+(d.partners||[]).length; }
 async function ghSave(){
   ghSetStatus('Сохраняю…'); renderSync('loading');
   try{
     const c=ghCfg();
     // 1) подтянуть актуальное из GitHub и слить с локальным (чтобы не затереть чужое)
-    let remoteSha=null;
+    let remoteSha=null, remoteCount=null;
     const g=await ghApi(`/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}`);
-    if(g.ok){ const gj=await g.json(); remoteSha=gj.sha; try{ db=mergeDB(db, normalize(JSON.parse(b64decode(gj.content)))); }catch(e){} }
+    if(g.ok){ const gj=await g.json(); remoteSha=gj.sha; try{ const rem=normalize(JSON.parse(b64decode(gj.content))); remoteCount=recCount(rem); db=mergeDB(db, rem); }catch(e){} }
     else if(g.status!==404){ ghSetStatus(`✗ ${g.status} ${g.statusText}`,'err'); renderSync(); return; }
+    // ЗАЩИТА: не писать молча, если записей станет меньше, чем сейчас в GitHub
+    if(remoteCount!=null && recCount(db) < remoteCount){
+      if(!confirm(`⚠️ В GitHub сейчас ${remoteCount} записей, а сохранится ${recCount(db)} (меньше).\nТак бывает только при удалении записей. Если ты ничего не удалял — НЕ сохраняй: нажми «Отмена», затем «Забрать из GitHub».\n\nВсё равно сохранить?`)){
+        ghSetStatus('Сохранение отменено','warn'); setDirty(true); renderAll(); return;
+      }
+    }
     // 2) записать слитый результат
     const body={ message:`crm: update ${new Date().toISOString()}`, content:b64encode(JSON.stringify(db,null,2)), branch:c.branch };
     if(remoteSha) body.sha=remoteSha;
